@@ -114,6 +114,9 @@ run_layout() {
 	# Configure and run the backup.
 	local dest="$WORK/backup_$name"
 	mkdir -p "$dest" /etc/redo-backups
+	# Use gzip rather than the pigz default: Alpine's pigz aborts against its
+	# zlib build. The .img format is identical (gzip stream), so this still
+	# exercises the full pipeline.
 	cat > /etc/redo-backups/itest.conf <<EOF
 dest = $dest
 drive = $base
@@ -121,6 +124,7 @@ parts = auto
 id = $name
 notes = integration $name
 consistency = none
+compressor = gzip
 EOF
 	log "  backup -> $dest"
 	if ! "$BIN" run itest; then
