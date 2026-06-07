@@ -66,7 +66,7 @@ jobs:
         working-directory: test/integration
         run: |
           sudo vagrant up --provider=libvirt
-          sudo vagrant ssh -c "sudo LAYOUTS='${{ inputs.layouts }}' /vagrant/run-tests.sh"
+          sudo vagrant ssh -c "sudo REDO_BACKUP_BIN=/opt/itest/redo-backup LAYOUTS='${{ inputs.layouts }}' /opt/itest/run-tests.sh"
 
       - name: Tear down
         if: always()

@@ -8,7 +8,7 @@
 # using the Redo Rescue command sequence (restore.sh), then verifies every
 # partition's file content round-tripped intact.
 #
-# Run as root inside the integration VM:  sudo /vagrant/run-tests.sh
+# Run as root inside the integration VM:  sudo /opt/itest/run-tests.sh
 # Optional: REDO_BACKUP_BIN=/path/to/redo-backup  LAYOUTS="gpt-ext4 mbr-ext4"
 set -euo pipefail
 
