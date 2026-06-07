@@ -1,0 +1,96 @@
+# SPDX-License-Identifier: EUPL-1.2
+version: 2
+
+project_name: redo-backups
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: redo-backup
+    main: ./cmd/redo-backup
+    binary: redo-backup
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - DEPENDENCIES.md
+      - docs/*
+      - examples/**/*
+
+nfpms:
+  - id: packages
+    package_name: redo-backups
+    vendor: Orbintsoft
+    homepage: https://github.com/OrbintSoft/redo-backups
+    maintainer: Stefano Balzarotti <stefano.balzarotti@orbintsoft.net>
+    description: Live disk/partition backups compatible with Redo Rescue.
+    license: EUPL-1.2
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+    contents:
+      - src: examples/etc/redo-backups/example.conf
+        dst: /etc/redo-backups/example.conf
+        type: "config|noreplace"
+      - src: LICENSE
+        dst: /usr/share/doc/redo-backups/LICENSE
+      - src: README.md
+        dst: /usr/share/doc/redo-backups/README.md
+      - src: docs/redo-format.md
+        dst: /usr/share/doc/redo-backups/redo-format.md
+
+snapcrafts:
+  - id: snap
+    name: redo-backups
+    title: redo-backups
+    summary: Live backups compatible with Redo Rescue
+    description: |
+      Create live disk/partition backups that are 100% compatible with Redo
+      Rescue, restorable from the official Redo Rescue live CD.
+    grade: stable
+    # Classic confinement: the tool needs raw access to block devices and runs
+    # external imaging tools (partclone, pigz, util-linux).
+    confinement: classic
+    license: EUPL-1.2
+    apps:
+      redo-backup:
+        command: redo-backup
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  use: github
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Others
+      order: 999
+
+release:
+  github:
+    owner: OrbintSoft
+    name: redo-backups
+  draft: false
+  prerelease: auto
