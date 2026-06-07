@@ -44,6 +44,21 @@ Needed on the target system to **take** a backup. Imaging requires **root**.
 | **os-prober** | Deferred. Upstream Redo Rescue uses it to add OS names to the `desc` field; `redo-backups` currently records only the filesystem label. |
 | **btrfs-progs** | Not used. The `btrfs-snapshot` strategy is not implemented; use `fsfreeze` for btrfs. |
 
+## Integration tests (manual)
+
+Only needed to run the Vagrant-based end-to-end suite under
+[test/integration/](test/integration/); not required for normal development.
+
+| Tool | Purpose |
+|------|---------|
+| **Vagrant** + a provider (**libvirt** or **VirtualBox**) | Spin up the disposable test VM (host side). |
+| **python3** | Decode the `.redo` descriptor in `restore.sh` (in-VM). |
+| **e2fsprogs / dosfstools / xfsprogs / btrfs-progs** | `mkfs.*` for the test layouts (in-VM). |
+| **shellcheck** | Optional; lint the harness shell scripts. |
+
+The in-VM `partclone`, `pigz`, `util-linux`, and `lvm2` are the same runtime
+dependencies listed above, installed by `test/integration/provision.sh`.
+
 ## Restore
 
 Restoring a backup is performed by the **Redo Rescue live CD**, not by this tool,

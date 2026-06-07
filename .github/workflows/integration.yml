@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: EUPL-1.2
+name: Integration
+
+# Expensive end-to-end backup/restore tests in a Vagrant VM. Manual only.
+on:
+  workflow_dispatch:
+    inputs:
+      layouts:
+        description: "Space-separated layout names to run (empty = all)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  VAGRANT_DEFAULT_PROVIDER: libvirt
+
+jobs:
+  integration:
+    name: Vagrant backup/restore
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The binary is built on the host and shared into the VM (no Go in the VM).
+      - name: Build redo-backup
+        run: make build
+
+      # GitHub-hosted Linux runners expose /dev/kvm; make it usable for libvirt.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install Vagrant + libvirt
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            vagrant libvirt-daemon-system qemu-kvm dnsmasq-base \
+            ebtables ruby-libvirt libvirt-dev rsync
+          sudo systemctl enable --now libvirtd
+          sudo vagrant plugin install vagrant-libvirt
+
+      - name: Bring up the VM and run the suite
+        working-directory: test/integration
+        run: |
+          sudo -E vagrant up --provider=libvirt
+          sudo -E LAYOUTS="${{ inputs.layouts }}" \
+            vagrant ssh -c "sudo LAYOUTS='${{ inputs.layouts }}' /vagrant/run-tests.sh"
+
+      - name: Tear down
+        if: always()
+        working-directory: test/integration
+        run: sudo -E vagrant destroy -f || true
