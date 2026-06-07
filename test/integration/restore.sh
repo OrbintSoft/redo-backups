@@ -78,9 +78,11 @@ while IFS=$'\t' read -r name fs; do
 	shopt -u nullglob
 	[ "${#images[@]}" -gt 0 ] || die "no image chunks for $name in $dest"
 
+	# .img chunks are a gzip stream; gunzip is used instead of pigz because
+	# Alpine's pigz is broken. gzip reads the same format pigz would.
 	log "  $name ($fs) -> /dev/$tgt_part via partclone.$tool (${#images[@]} chunk(s))"
 	cat "${images[@]}" \
-		| pigz --decompress --stdout \
+		| gzip --decompress --stdout \
 		| partclone."$tool" --restore --force --UI-fresh 1 \
 			--logfile "$tmp/${name}.log" --overwrite "/dev/$tgt_part" --no_block_detail
 done < "$parts"

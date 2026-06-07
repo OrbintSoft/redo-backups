@@ -47,7 +47,7 @@ else
 fi
 
 echo "Provisioned. Tool locations and versions:"
-for t in partclone.ext4 partclone.extfs partclone.fat partclone.xfs partclone.dd pigz split sfdisk lsblk blockdev; do
+for t in partclone.ext4 partclone.extfs partclone.fat partclone.xfs partclone.dd pigz gzip split sfdisk lsblk blockdev; do
 	printf '  %-16s -> %s\n' "$t" "$(command -v "$t" 2>/dev/null || echo MISSING)"
 done
 echo "  split --version: $(split --version 2>&1 | head -1)"
