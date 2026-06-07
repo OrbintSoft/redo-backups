@@ -40,14 +40,28 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Install Vagrant + libvirt
+      # Ubuntu 24.04 no longer ships a 'vagrant' package, so install it from the
+      # official HashiCorp apt repository.
+      - name: Install Vagrant (HashiCorp) + libvirt
         run: |
+          wget -qO- https://apt.releases.hashicorp.com/gpg \
+            | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" \
+            | sudo tee /etc/apt/sources.list.d/hashicorp.list
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            vagrant libvirt-daemon-system qemu-kvm dnsmasq-base \
-            ebtables ruby-libvirt libvirt-dev rsync
+            vagrant \
+            libvirt-daemon-system libvirt-dev qemu-system-x86 dnsmasq-base ebtables \
+            ruby-dev build-essential pkg-config rsync
           sudo systemctl enable --now libvirtd
-          sudo vagrant plugin install vagrant-libvirt
+
+      # The vagrant-libvirt plugin must be compiled against the system libvirt
+      # while linking against Vagrant's embedded libraries. Install it under sudo
+      # so it lives in root's ~/.vagrant.d, matching the sudo 'vagrant up' below.
+      - name: Install vagrant-libvirt plugin
+        run: |
+          sudo CONFIGURE_ARGS="with-ldflags=-L/opt/vagrant/embedded/lib with-libvirt-include=/usr/include/libvirt with-libvirt-lib=/usr/lib/x86_64-linux-gnu" \
+            vagrant plugin install vagrant-libvirt
 
       - name: Bring up the VM and run the suite
         working-directory: test/integration
