@@ -48,7 +48,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             vagrant \
-            libvirt-daemon-system libvirt-dev qemu-system-x86 dnsmasq-base ebtables \
+            libvirt-daemon-system libvirt-dev qemu-system-x86 qemu-utils dnsmasq-base ebtables \
             ruby-dev build-essential pkg-config rsync
           sudo systemctl enable --now libvirtd
 
