@@ -59,3 +59,11 @@ and licence notices intact; new source files should carry an SPDX header
 Never commit personal data into the repository — in particular drive UUIDs, partition
 labels, hostnames, or any content extracted from real backups. Documentation and test
 fixtures must use sanitized/synthetic values only.
+
+## 8. Document every dependency
+
+Whenever a dependency is added — a third-party Go module, a build-time tool, or an
+external command invoked at runtime — record it in [DEPENDENCIES.md](DEPENDENCIES.md) in
+the **same** change that introduces it, stating what it is for. This applies to new
+`partclone.*` binaries, util-linux/coreutils tools, packaging tools, and any future Go
+module. Prefer the standard library and already-listed tools before adding new ones.

@@ -1,5 +1,9 @@
 # redo-backups
 
+[![CI](https://github.com/OrbintSoft/redo-backups/actions/workflows/ci.yml/badge.svg)](https://github.com/OrbintSoft/redo-backups/actions/workflows/ci.yml)
+[![Release](https://github.com/OrbintSoft/redo-backups/actions/workflows/release.yml/badge.svg)](https://github.com/OrbintSoft/redo-backups/actions/workflows/release.yml)
+[![License: EUPL-1.2](https://img.shields.io/badge/license-EUPL--1.2-blue.svg)](LICENSE)
+
 Create **live** disk/partition backups that are **100% compatible with
 [Redo Rescue](https://redorescue.com)**, so they can be restored from the official Redo
 Rescue live CD.
