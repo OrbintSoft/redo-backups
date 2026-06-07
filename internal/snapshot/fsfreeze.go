@@ -19,7 +19,7 @@ type Fsfreeze struct {
 }
 
 // Name returns the configuration name of the strategy.
-func (*Fsfreeze) Name() string { return config.ConsistencyFsfreeze }
+func (*Fsfreeze) Name() config.Consistency { return config.ConsistencyFsfreeze }
 
 // Prepare freezes the target's filesystem if it is mounted. The returned Release
 // thaws it; it is safe to call even if the freeze was skipped.

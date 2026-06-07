@@ -3,10 +3,14 @@
 package config
 
 import (
+	_ "embed"
 	"reflect"
 	"testing"
 	"testing/fstest"
 )
+
+//go:embed testdata/full-profile.conf
+var fullProfileConf string
 
 func TestLoadDefaults(t *testing.T) {
 	fsys := fstest.MapFS{
@@ -31,18 +35,7 @@ func TestLoadDefaults(t *testing.T) {
 }
 
 func TestLoadFull(t *testing.T) {
-	conf := `
-# Sample profile
-dest = /mnt/backup
-drive = sda
-parts = sda1, sda2 sda3
-id = nightly
-notes = "After emerge"
-compressor = gzip
-split_size = 2G
-consistency = fsfreeze
-`
-	fsys := fstest.MapFS{"box.conf": &fstest.MapFile{Data: []byte(conf)}}
+	fsys := fstest.MapFS{"box.conf": &fstest.MapFile{Data: []byte(fullProfileConf)}}
 	cfg, err := LoadFS(fsys, "box")
 	if err != nil {
 		t.Fatalf("LoadFS: %v", err)
@@ -116,5 +109,21 @@ func TestErrors(t *testing.T) {
 func TestInvalidProfileName(t *testing.T) {
 	if _, err := LoadFS(fstest.MapFS{}, "../etc"); err == nil {
 		t.Fatal("expected error for invalid profile name")
+	}
+}
+
+func TestListProfiles(t *testing.T) {
+	fsys := fstest.MapFS{
+		"weekly.conf":            &fstest.MapFile{Data: []byte("dest = /b\n")},
+		"nightly.conf":           &fstest.MapFile{Data: []byte("dest = /a\n")},
+		"nightly.conf.d/10.conf": &fstest.MapFile{Data: []byte("drive = sdb\n")}, // drop-in, not a profile
+		"notes.txt":              &fstest.MapFile{Data: []byte("ignore me\n")},
+	}
+	got, err := listProfilesFS(fsys)
+	if err != nil {
+		t.Fatalf("listProfilesFS: %v", err)
+	}
+	if !reflect.DeepEqual(got, []string{"nightly", "weekly"}) {
+		t.Errorf("profiles = %v, want [nightly weekly]", got)
 	}
 }

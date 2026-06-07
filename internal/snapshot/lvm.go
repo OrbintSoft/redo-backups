@@ -28,7 +28,7 @@ type LVMSnapshot struct {
 }
 
 // Name returns the configuration name of the strategy.
-func (*LVMSnapshot) Name() string { return config.ConsistencyLVMSnapshot }
+func (*LVMSnapshot) Name() config.Consistency { return config.ConsistencyLVMSnapshot }
 
 // Prepare creates a snapshot of the target logical volume and returns the
 // snapshot's device path as the source to image.

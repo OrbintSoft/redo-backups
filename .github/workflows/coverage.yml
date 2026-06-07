@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: EUPL-1.2
+name: Coverage
+
+# Computes test coverage and publishes a shields.io endpoint badge to the
+# orphan 'badges' branch. No third-party coverage service is used.
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  coverage:
+    name: Measure & publish coverage
+    runs-on: ubuntu-latest
+    if: github.repository == 'OrbintSoft/redo-backups'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Measure coverage
+        id: cov
+        run: |
+          go test -coverprofile=coverage.out ./...
+          pct=$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}' | tr -d '%')
+          echo "pct=$pct" >> "$GITHUB_OUTPUT"
+          echo "Total coverage: $pct%"
+
+      - name: Publish badge to 'badges' branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PCT: ${{ steps.cov.outputs.pct }}
+        run: |
+          int=${PCT%.*}
+          if   [ "$int" -ge 90 ]; then color=brightgreen
+          elif [ "$int" -ge 80 ]; then color=green
+          elif [ "$int" -ge 70 ]; then color=yellowgreen
+          elif [ "$int" -ge 50 ]; then color=yellow
+          else color=red; fi
+
+          work=$(mktemp -d)
+          cd "$work"
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q -b badges
+          printf '{"schemaVersion":1,"label":"coverage","message":"%s%%","color":"%s"}\n' \
+            "$PCT" "$color" > coverage.json
+          git add coverage.json
+          git commit -q -m "chore: update coverage badge (${PCT}%)"
+          git push -q -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" badges

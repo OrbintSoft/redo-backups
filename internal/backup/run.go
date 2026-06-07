@@ -46,25 +46,9 @@ func (b *Backup) Run(ctx context.Context, cfg *config.Config) (*Report, error) {
 		return nil, err
 	}
 
-	drive := cfg.Drive
-	if cfg.DriveAuto() {
-		detected, err := b.Inspector.RootDrive(ctx)
-		if err != nil {
-			return nil, err
-		}
-		drive = detected
-	}
-
-	d, err := b.Inspector.Drive(ctx, drive)
+	drive, d, parts, err := b.resolveTarget(ctx, cfg)
 	if err != nil {
 		return nil, err
-	}
-	parts, err := SelectPartitions(cfg, d)
-	if err != nil {
-		return nil, err
-	}
-	if len(parts) == 0 {
-		return nil, fmt.Errorf("backup: no partitions to back up on drive %q", drive)
 	}
 
 	now := b.now()
@@ -129,11 +113,94 @@ func (b *Backup) imagePartition(ctx context.Context, strategy snapshot.Strategy,
 		}
 	}()
 
-	pl := PartitionPipeline(part, prepared.Source, cfg.Compressor, cfg.SplitSize, logfile, cfg.Dest, id)
+	pl := PartitionPipeline(part, prepared.Source, string(cfg.Compressor), cfg.SplitSize, logfile, cfg.Dest, id)
 	if perr := b.Runner.RunPipeline(ctx, pl.Stages); perr != nil {
 		return fmt.Errorf("backup: imaging %s: %w", part.Name, perr)
 	}
 	return nil
+}
+
+// resolveTarget resolves the drive (auto-detecting the root drive when
+// configured), gathers its layout, and selects the partitions to back up. It
+// performs only read-only inspection.
+func (b *Backup) resolveTarget(ctx context.Context, cfg *config.Config) (drive string, d *disk.Drive, parts []disk.Partition, err error) {
+	drive = cfg.Drive
+	if cfg.DriveAuto() {
+		drive, err = b.Inspector.RootDrive(ctx)
+		if err != nil {
+			return "", nil, nil, err
+		}
+	}
+	d, err = b.Inspector.Drive(ctx, drive)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	parts, err = SelectPartitions(cfg, d)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	if len(parts) == 0 {
+		return "", nil, nil, fmt.Errorf("backup: no partitions to back up on drive %q", drive)
+	}
+	return drive, d, parts, nil
+}
+
+// Plan is a read-only preview of what a backup run would do.
+type Plan struct {
+	Drive          string
+	ID             string
+	DescriptorPath string
+	Consistency    config.Consistency
+	Partitions     []PlannedPartition
+}
+
+// PlannedPartition describes the imaging of one partition in a Plan.
+type PlannedPartition struct {
+	Name     string
+	Source   string
+	Commands []string
+}
+
+// Plan computes what Run would do using only read-only inspection: it resolves
+// the drive and partitions and builds the imaging pipeline for each, without
+// reading the MBR, writing the descriptor, taking snapshots, or imaging
+// anything. It backs the CLI's --dry-run.
+func (b *Backup) Plan(ctx context.Context, cfg *config.Config) (*Plan, error) {
+	// Surface an unknown/unimplemented consistency strategy without preparing it.
+	if _, err := snapshot.For(cfg, b.Runner); err != nil {
+		return nil, err
+	}
+
+	drive, _, parts, err := b.resolveTarget(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	id := cfg.ID
+	if id == "" {
+		id = FormatID(b.now())
+	}
+
+	plan := &Plan{
+		Drive:          drive,
+		ID:             id,
+		DescriptorPath: filepath.Join(cfg.Dest, id+".redo"),
+		Consistency:    cfg.Consistency,
+	}
+	for _, part := range parts {
+		logfile := filepath.Join("<tmp>", part.Name+".log")
+		pl := PartitionPipeline(part, "/dev/"+part.Name, string(cfg.Compressor), cfg.SplitSize, logfile, cfg.Dest, id)
+		cmds := make([]string, len(pl.Stages))
+		for i, s := range pl.Stages {
+			cmds[i] = s.String()
+		}
+		plan.Partitions = append(plan.Partitions, PlannedPartition{
+			Name:     part.Name,
+			Source:   "/dev/" + part.Name,
+			Commands: cmds,
+		})
+	}
+	return plan, nil
 }
 
 func (b *Backup) now() time.Time {

@@ -22,6 +22,27 @@ func Load(dir, profile string) (*Config, error) {
 	return LoadFS(os.DirFS(dir), profile)
 }
 
+// ListProfiles returns the names of the profiles available in dir (each
+// "<name>.conf" file), sorted. Drop-in directories ("<name>.conf.d") are not
+// profiles and are ignored.
+func ListProfiles(dir string) ([]string, error) {
+	return listProfilesFS(os.DirFS(dir))
+}
+
+// listProfilesFS is the filesystem-agnostic core of ListProfiles.
+func listProfilesFS(fsys fs.FS) ([]string, error) {
+	matches, err := fs.Glob(fsys, "*.conf")
+	if err != nil {
+		return nil, fmt.Errorf("config: listing profiles: %w", err)
+	}
+	names := make([]string, 0, len(matches))
+	for _, m := range matches {
+		names = append(names, strings.TrimSuffix(m, ".conf"))
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
 // LoadFS is like Load but reads from an arbitrary filesystem, which makes the
 // loader testable without touching the real /etc.
 func LoadFS(fsys fs.FS, profile string) (*Config, error) {
@@ -65,7 +86,7 @@ func LoadFS(fsys fs.FS, profile string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := cfg.validate(); err != nil {
+	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 	return cfg, nil
@@ -138,7 +159,7 @@ func fromMap(m map[string]string) (*Config, error) {
 		cfg.Drive = v
 	}
 	if v, ok := m["parts"]; ok {
-		cfg.Parts = parseParts(v)
+		cfg.Parts = ParseParts(v)
 	}
 	if v, ok := m["id"]; ok {
 		cfg.ID = v
@@ -150,13 +171,13 @@ func fromMap(m map[string]string) (*Config, error) {
 		cfg.Version = v
 	}
 	if v, ok := m["compressor"]; ok {
-		cfg.Compressor = v
+		cfg.Compressor = Compressor(v)
 	}
 	if v, ok := m["split_size"]; ok {
 		cfg.SplitSize = v
 	}
 	if v, ok := m["consistency"]; ok {
-		cfg.Consistency = v
+		cfg.Consistency = Consistency(v)
 	}
 	if v, ok := m["lvm_snapshot_size"]; ok {
 		cfg.LVMSnapshotSize = v
@@ -164,9 +185,9 @@ func fromMap(m map[string]string) (*Config, error) {
 	return cfg, nil
 }
 
-// parseParts splits a parts value on commas and whitespace. The sentinel "auto"
+// ParseParts splits a parts value on commas and whitespace. The sentinel "auto"
 // (alone) yields an empty slice, meaning all partitions.
-func parseParts(v string) []string {
+func ParseParts(v string) []string {
 	if strings.TrimSpace(v) == auto {
 		return nil
 	}

@@ -23,7 +23,7 @@ func cmdStrings(p Pipeline) []string {
 
 func TestPartitionPipelineExt4(t *testing.T) {
 	part := disk.Partition{Name: "sda2", FS: "ext4"}
-	p := PartitionPipeline(part, "/dev/sda2", config.CompressorPigz, "4096M", "/tmp/sda2.log", "/dest", "20260105")
+	p := PartitionPipeline(part, "/dev/sda2", string(config.CompressorPigz), "4096M", "/tmp/sda2.log", "/dest", "20260105")
 	want := []string{
 		"partclone.extfs --clone --force --UI-fresh 1 --logfile /tmp/sda2.log --source /dev/sda2 --no_block_detail",
 		"pigz --stdout",
@@ -37,7 +37,7 @@ func TestPartitionPipelineExt4(t *testing.T) {
 func TestPartitionPipelineDDFallback(t *testing.T) {
 	// An unknown filesystem must use partclone.dd WITHOUT the --clone flag.
 	part := disk.Partition{Name: "sda3", FS: "swap"}
-	p := PartitionPipeline(part, "/dev/sda3", config.CompressorGzip, "2G", "/tmp/sda3.log", "/dest", "id1")
+	p := PartitionPipeline(part, "/dev/sda3", string(config.CompressorGzip), "2G", "/tmp/sda3.log", "/dest", "id1")
 	want := []string{
 		"partclone.dd --force --UI-fresh 1 --logfile /tmp/sda3.log --source /dev/sda3 --no_block_detail",
 		"gzip --stdout",

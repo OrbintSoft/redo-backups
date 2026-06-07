@@ -13,7 +13,7 @@ var (
 	splitSizeRE = regexp.MustCompile(`^[0-9]+[A-Za-z]*$`)
 )
 
-var validConsistency = map[string]bool{
+var validConsistency = map[Consistency]bool{
 	ConsistencyNone:          true,
 	ConsistencyFsfreeze:      true,
 	ConsistencyLVMSnapshot:   true,
@@ -21,13 +21,15 @@ var validConsistency = map[string]bool{
 	ConsistencyRebootOffline: true,
 }
 
-var validCompressor = map[string]bool{
+var validCompressor = map[Compressor]bool{
 	CompressorPigz: true,
 	CompressorGzip: true,
 }
 
-// validate checks the resolved configuration for internal consistency.
-func (c *Config) validate() error {
+// Validate checks the resolved configuration for internal consistency. It is
+// exported so callers that mutate a loaded Config (e.g. CLI overrides) can
+// re-check it.
+func (c *Config) Validate() error {
 	if c.Dest == "" {
 		return fmt.Errorf("config: 'dest' is required")
 	}
