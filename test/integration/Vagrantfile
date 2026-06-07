@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: EUPL-1.2
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+#
+# Integration-test VM for redo-backups.
+#
+# This VM provides a clean Linux environment with all runtime tools (partclone,
+# pigz, util-linux, lvm2, python3) and root privileges, where the harness creates
+# loopback disks with various layouts, runs a backup, restores it with the Redo
+# Rescue command sequence, and verifies the data round-trips.
+#
+# The redo-backup binary is NOT built inside the VM: build it on the host first
+# (`make build`) so the VM needs no Go toolchain. The repo is mounted at
+# /redo-backups and this directory at /vagrant.
+#
+# A lightweight Alpine box is used by default; override with REDO_ITEST_BOX
+# (provision.sh handles both apk- and apt-based distributions).
+#
+# Usage (needs a virtualization provider such as libvirt or VirtualBox):
+#   make build                 # on the host, produces bin/redo-backup
+#   cd test/integration
+#   vagrant up
+#   vagrant ssh -c 'sudo /vagrant/run-tests.sh'
+#   vagrant destroy -f
+
+Vagrant.configure("2") do |config|
+  config.vm.box = ENV.fetch("REDO_ITEST_BOX", "generic/alpine319")
+  config.vm.hostname = "redo-itest"
+
+  # Mount the repository (for the prebuilt binary and example config) and this
+  # harness directory. rsync keeps it simple across providers/guests.
+  config.vm.synced_folder "../../", "/redo-backups", type: "rsync",
+    rsync__exclude: [".git/", "dist/"]
+  config.vm.synced_folder ".", "/vagrant", type: "rsync"
+
+  config.vm.provider "libvirt" do |lv|
+    lv.memory = 1024
+    lv.cpus = 2
+  end
+
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = 1024
+    vb.cpus = 2
+  end
+
+  config.vm.provision "shell", path: "provision.sh"
+end
