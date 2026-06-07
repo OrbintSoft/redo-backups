@@ -55,10 +55,8 @@ func For(cfg *config.Config, r run.Runner) (Strategy, error) {
 		return None{}, nil
 	case config.ConsistencyFsfreeze:
 		return &Fsfreeze{Runner: r}, nil
-	case config.ConsistencyLVMSnapshot:
-		return &LVMSnapshot{Runner: r, SnapshotSize: cfg.LVMSnapshotSize}, nil
-	case config.ConsistencyBtrfsSnapshot, config.ConsistencyRebootOffline:
-		return nil, fmt.Errorf("snapshot: strategy %q is not implemented yet", cfg.Consistency)
+	case config.ConsistencyLVM:
+		return &LVM{Runner: r}, nil
 	default:
 		return nil, fmt.Errorf("snapshot: unknown strategy %q", cfg.Consistency)
 	}

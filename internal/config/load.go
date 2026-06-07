@@ -131,16 +131,15 @@ func unquote(s string) string {
 // knownKeys lists every recognized configuration key. Unknown keys are rejected
 // so typos surface immediately instead of being silently ignored.
 var knownKeys = map[string]bool{
-	"dest":              true,
-	"drive":             true,
-	"parts":             true,
-	"id":                true,
-	"notes":             true,
-	"version":           true,
-	"compressor":        true,
-	"split_size":        true,
-	"consistency":       true,
-	"lvm_snapshot_size": true,
+	"dest":        true,
+	"drive":       true,
+	"parts":       true,
+	"id":          true,
+	"notes":       true,
+	"version":     true,
+	"compressor":  true,
+	"split_size":  true,
+	"consistency": true,
 }
 
 // fromMap builds a Config from merged key/value pairs, starting from defaults.
@@ -178,9 +177,6 @@ func fromMap(m map[string]string) (*Config, error) {
 	}
 	if v, ok := m["consistency"]; ok {
 		cfg.Consistency = Consistency(v)
-	}
-	if v, ok := m["lvm_snapshot_size"]; ok {
-		cfg.LVMSnapshotSize = v
 	}
 	return cfg, nil
 }

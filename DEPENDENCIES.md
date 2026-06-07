@@ -18,11 +18,11 @@ Needed to compile, test, lint, and release the project.
 
 | Tool | Purpose | Notes |
 |------|---------|-------|
-| **Go** ≥ 1.26 | Compile and test | Version is pinned in [go.mod](go.mod). |
+| **Go** ≥ 1.26 | Compile and test | `go 1.26` in [go.mod](go.mod) is the minimum; CI runs on the latest `stable` Go. |
 | **git** | Version stamping | `make` derives the version from `git describe`. Optional; falls back to `dev`. |
 | **make** | Convenience build/install | Optional; you can call `go`/`install` directly. |
-| **golangci-lint** v2 (≥ 2.12) | Linting (`make lint`, CI) | Installed in CI via `go install`. v2 required for Go 1.26. |
-| **GoReleaser** | Release builds & packaging | Used only by the release workflow (tar.gz, deb, rpm, snap). |
+| **golangci-lint** v2 | Linting (`make lint`, CI) | CI installs the latest v2 via `go install ...@latest`. |
+| **GoReleaser** | Release builds & packaging | Release workflow uses `version: latest` (tar.gz, deb, rpm, snap). |
 | **snapcraft** | Building the snap package | Only needed for the snap artifact in the release pipeline. |
 
 ## Runtime dependencies
@@ -34,15 +34,15 @@ Needed on the target system to **take** a backup. Imaging requires **root**.
 | **partclone** | `partclone.extfs`, `partclone.fat`, `partclone.ntfs`, `partclone.btrfs`, `partclone.xfs`, `partclone.f2fs`, `partclone.exfat`, `partclone.hfsp`, `partclone.minix`, `partclone.nilfs2`, `partclone.reiser4`, `partclone.dd` | Imaging each partition (see [docs/redo-format.md](docs/redo-format.md)). Only the binaries for the filesystems you back up are required. |
 | **pigz** (or **gzip**) | `pigz` / `gzip` | Compressing the image stream. `pigz` is the default; `gzip` is selectable via config. |
 | **coreutils** | `split`, `dd`, `cat`, `truncate` | Splitting chunks, reading the MBR, stream handling. |
-| **util-linux** | `lsblk`, `sfdisk`, `blockdev`, `findmnt`, `fsfreeze`, `wipefs`, `partprobe` | Disk discovery, partition table dump, sizes, root-drive detection, freezing, and (restore-side) wiping/partitioning. |
-| **lvm2** | `lvs`, `lvcreate`, `lvremove` | Only for the `lvm-snapshot` consistency strategy. |
+| **util-linux** | `lsblk`, `sfdisk`, `blockdev`, `findmnt`, `fsfreeze`, `wipefs`, `partprobe` | Disk discovery, partition table dump, sizes, root-drive detection, freezing (used by both the `fsfreeze` and `lvm` consistency strategies), and (restore-side) wiping/partitioning. |
 
 ### Optional / not yet required
 
 | Tool | Status |
 |------|--------|
 | **os-prober** | Deferred. Upstream Redo Rescue uses it to add OS names to the `desc` field; `redo-backups` currently records only the filesystem label. |
-| **btrfs-progs** | Not used. The `btrfs-snapshot` strategy is not implemented; use `fsfreeze` for btrfs. |
+| **lvm2** | Not required at runtime. The `lvm` strategy only freezes the LVs' filesystems (via `lsblk` + `fsfreeze`); it does not call `lvcreate`/`lvs`. |
+| **btrfs-progs** | Not used. There is no `btrfs-snapshot` strategy; use `fsfreeze` for btrfs. |
 
 ## Integration tests (manual)
 
@@ -54,9 +54,10 @@ Only needed to run the Vagrant-based end-to-end suite under
 | **Vagrant** + a provider (**libvirt** or **VirtualBox**) | Spin up the disposable test VM (host side). |
 | **python3** | Decode the `.redo` descriptor in `restore.sh` (in-VM). |
 | **e2fsprogs / dosfstools / xfsprogs / btrfs-progs** | `mkfs.*` for the test layouts (in-VM). |
+| **lvm2** | The `lvm-ext4` layout builds a PV/VG/LVs to exercise the `lvm` strategy (in-VM; the layout is skipped if absent). |
 | **shellcheck** | Optional; lint the harness shell scripts. |
 
-The in-VM `partclone`, `pigz`, `util-linux`, and `lvm2` are the same runtime
+The in-VM `partclone`, `pigz`, and `util-linux` are the same runtime
 dependencies listed above, installed by `test/integration/provision.sh`.
 
 ## Restore

@@ -52,10 +52,38 @@ Backups are configured under `/etc/redo-backups/`:
 A ready-to-edit profile with every setting documented is provided under
 [examples/etc/redo-backups/](examples/etc/redo-backups/).
 
-All settings and the consistency strategies (`none` and `fsfreeze` are implemented;
-`lvm-snapshot` is implemented for LV devices; `btrfs-snapshot` and `reboot-offline` are
-not yet) are documented in [docs/redo-format.md](docs/redo-format.md) and in the example
-configuration.
+### Consistency strategies
+
+Imaging a live, mounted filesystem can capture an inconsistent state, so the strategy is
+configurable (`consistency =` in the profile):
+
+- **`none`** — image the device as-is. Fast, no requirements, but not crash-consistent.
+- **`fsfreeze`** — freeze the partition's filesystem (`fsfreeze -f`) while imaging, then
+  thaw it. Crash-consistent; briefly blocks writes. Use this for directly-formatted
+  partitions, **including btrfs**.
+- **`lvm`** — for an LVM physical-volume partition. See the note below.
+
+#### Why `lvm` works the way it does
+
+A backup is only useful if the **Redo Rescue live CD can restore it**, and Redo Rescue
+restores at the **partition** level: it recreates the partition table and writes each
+per-partition image back to `/dev/<part>`. It has no concept of logical volumes. Imaging
+LVs individually (e.g. with LVM snapshots) would produce images Redo Rescue **cannot**
+restore.
+
+So for an LVM PV partition, `redo-backups` keeps the same unit Redo Rescue uses — the
+**whole PV partition, imaged raw** — and makes it consistent by **freezing every mounted
+filesystem on the PV's logical volumes** for the duration of imaging, then thawing them.
+The result is crash-consistent *and* restorable from the live CD. The cost is a full-size
+raw image (no free-space skipping) and a brief simultaneous write-freeze of those
+filesystems.
+
+There is intentionally **no** `btrfs-snapshot` (a btrfs snapshot is a subvolume, not a
+block device — use `fsfreeze`) and **no** offline/reboot mode (that is just what the Redo
+Rescue live CD already does).
+
+These strategies are documented in full in [docs/redo-format.md](docs/redo-format.md) and
+the [example configuration](examples/etc/redo-backups/example.conf).
 
 ## Quick start
 
@@ -91,8 +119,8 @@ Useful flags for `run` (also available where relevant):
 - `--config-dir <dir>` — use a profile directory other than `/etc/redo-backups`.
 - `--dry-run` — validate and print the imaging plan without touching disks.
 - Per-setting overrides: `--dest`, `--drive`, `--parts`, `--id`, `--notes`,
-  `--compressor`, `--split-size`, `--consistency`, `--lvm-snapshot-size`. These
-  override the profile and are re-validated. Example:
+  `--compressor`, `--split-size`, `--consistency`. These override the profile and are
+  re-validated. Example:
 
 ```sh
 redo-backup run nightly --dest /mnt/usb --consistency fsfreeze --dry-run
@@ -102,8 +130,8 @@ redo-backup run nightly --dest /mnt/usb --consistency fsfreeze --dry-run
 
 - Go (to build) — produces a single static binary.
 - Runtime tools on the target system: `partclone.*`, `pigz`, `split`, `coreutils`,
-  `util-linux` (`sfdisk`, `lsblk`, `wipefs`), and snapshot tooling for the chosen
-  consistency strategy (`fsfreeze`, LVM, or Btrfs).
+  `util-linux` (`sfdisk`, `lsblk`, `blockdev`, `findmnt`, `fsfreeze`). The `fsfreeze` and
+  `lvm` strategies use `fsfreeze`; nothing extra beyond `util-linux` is required.
 
 ## Licence
 

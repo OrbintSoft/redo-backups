@@ -85,7 +85,6 @@ func cmdRun(args []string, stdout, stderr *os.File) int {
 	oCompressor := fs.String("compressor", "", "override: pigz|gzip")
 	oSplit := fs.String("split-size", "", "override: chunk size (e.g. 4096M)")
 	oConsistency := fs.String("consistency", "", "override: consistency strategy")
-	oLVMSize := fs.String("lvm-snapshot-size", "", "override: LVM snapshot size")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -119,8 +118,6 @@ func cmdRun(args []string, stdout, stderr *os.File) int {
 			cfg.SplitSize = *oSplit
 		case "consistency":
 			cfg.Consistency = config.Consistency(*oConsistency)
-		case "lvm-snapshot-size":
-			cfg.LVMSnapshotSize = *oLVMSize
 		}
 	})
 	if err := cfg.Validate(); err != nil {
@@ -231,7 +228,4 @@ func printConfig(w *os.File, cfg *config.Config) {
 	fmt.Fprintf(w, "compressor:   %s\n", cfg.Compressor)
 	fmt.Fprintf(w, "split_size:   %s\n", cfg.SplitSize)
 	fmt.Fprintf(w, "consistency:  %s\n", cfg.Consistency)
-	if cfg.Consistency == config.ConsistencyLVMSnapshot {
-		fmt.Fprintf(w, "lvm_snapshot_size: %s\n", cfg.LVMSnapshotSize)
-	}
 }

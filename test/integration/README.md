@@ -27,6 +27,13 @@ For each disk layout (see `ALL_LAYOUTS` in [run-tests.sh](run-tests.sh)):
 Restoring with the same tooling Redo Rescue uses is what validates "100%
 compatible, restorable from the live CD".
 
+There is also an **`lvm-ext4`** layout that exercises the `lvm` consistency
+strategy: it builds an LVM PV partition with two mounted ext4 logical volumes,
+backs it up with `consistency = lvm` (which freezes the LV filesystems and images
+the PV partition raw while they stay mounted), tears the VG down, restores the raw
+PV, brings the VG back, and verifies the LVs. It is skipped automatically if
+`lvm2` is not installed.
+
 ## Requirements
 
 - On the **host**: [Vagrant](https://www.vagrantup.com/) with a provider
