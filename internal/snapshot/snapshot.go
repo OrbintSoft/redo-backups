@@ -47,18 +47,20 @@ type Strategy interface {
 	Prepare(ctx context.Context, t Target) (Prepared, error)
 }
 
-// For returns the Strategy selected by the given consistency name, using r to
-// run any required commands.
-func For(name string, r run.Runner) (Strategy, error) {
-	switch name {
+// For returns the Strategy selected by cfg.Consistency, using r to run any
+// required commands.
+func For(cfg *config.Config, r run.Runner) (Strategy, error) {
+	switch cfg.Consistency {
 	case config.ConsistencyNone:
 		return None{}, nil
 	case config.ConsistencyFsfreeze:
 		return &Fsfreeze{Runner: r}, nil
-	case config.ConsistencyLVMSnapshot, config.ConsistencyBtrfsSnapshot, config.ConsistencyRebootOffline:
-		return nil, fmt.Errorf("snapshot: strategy %q is not implemented yet", name)
+	case config.ConsistencyLVMSnapshot:
+		return &LVMSnapshot{Runner: r, SnapshotSize: cfg.LVMSnapshotSize}, nil
+	case config.ConsistencyBtrfsSnapshot, config.ConsistencyRebootOffline:
+		return nil, fmt.Errorf("snapshot: strategy %q is not implemented yet", cfg.Consistency)
 	default:
-		return nil, fmt.Errorf("snapshot: unknown strategy %q", name)
+		return nil, fmt.Errorf("snapshot: unknown strategy %q", cfg.Consistency)
 	}
 }
 

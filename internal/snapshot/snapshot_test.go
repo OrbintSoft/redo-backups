@@ -10,16 +10,20 @@ import (
 	"github.com/OrbintSoft/redo-backups/internal/run"
 )
 
+func cfgFor(name string) *config.Config {
+	return &config.Config{Consistency: name, LVMSnapshotSize: "10%ORIGIN"}
+}
+
 func TestForSelection(t *testing.T) {
 	r := run.NewFakeRunner()
-	if s, err := For(config.ConsistencyNone, r); err != nil || s.Name() != config.ConsistencyNone {
-		t.Errorf("none: s=%v err=%v", s, err)
+	for _, name := range []string{config.ConsistencyNone, config.ConsistencyFsfreeze, config.ConsistencyLVMSnapshot} {
+		s, err := For(cfgFor(name), r)
+		if err != nil || s.Name() != name {
+			t.Errorf("%s: s=%v err=%v", name, s, err)
+		}
 	}
-	if s, err := For(config.ConsistencyFsfreeze, r); err != nil || s.Name() != config.ConsistencyFsfreeze {
-		t.Errorf("fsfreeze: s=%v err=%v", s, err)
-	}
-	for _, name := range []string{config.ConsistencyLVMSnapshot, config.ConsistencyBtrfsSnapshot, config.ConsistencyRebootOffline, "bogus"} {
-		if _, err := For(name, r); err == nil {
+	for _, name := range []string{config.ConsistencyBtrfsSnapshot, config.ConsistencyRebootOffline, "bogus"} {
+		if _, err := For(cfgFor(name), r); err == nil {
 			t.Errorf("expected error for strategy %q", name)
 		}
 	}

@@ -41,7 +41,7 @@ type Report struct {
 // MBR and partition table, writes the ".redo" descriptor, and images each
 // selected partition.
 func (b *Backup) Run(ctx context.Context, cfg *config.Config) (*Report, error) {
-	strategy, err := snapshot.For(cfg.Consistency, b.Runner)
+	strategy, err := snapshot.For(cfg, b.Runner)
 	if err != nil {
 		return nil, err
 	}
