@@ -20,7 +20,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: stable
           cache: true
 
       - name: Check formatting
@@ -44,19 +44,19 @@ jobs:
   lint:
     name: golangci-lint
     runs-on: ubuntu-latest
-    env:
-      GOLANGCI_LINT_VERSION: v2.12.2
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: stable
           cache: true
 
+      # @latest resolves to the newest golangci-lint v2 release (the /v2 module
+      # path keeps it within v2; bump the path when v3 lands).
       - name: Install golangci-lint
-        run: go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
       - name: Lint
         run: "$(go env GOPATH)/bin/golangci-lint run ./..."

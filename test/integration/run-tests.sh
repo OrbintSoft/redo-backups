@@ -34,24 +34,26 @@ ALL_LAYOUTS=(
 	"gpt-xfs|gpt|xfs:300"
 )
 
-# Allow selecting a subset via the LAYOUTS env var.
-declare -a LAYOUT_LIST
-if [ -n "${LAYOUTS:-}" ]; then
+# is_selected reports whether a layout name should run (empty LAYOUTS = all).
+is_selected() {
+	[ -z "${LAYOUTS:-}" ] && return 0
+	local want
 	for want in $LAYOUTS; do
-		for l in "${ALL_LAYOUTS[@]}"; do
-			[ "${l%%|*}" = "$want" ] && LAYOUT_LIST+=("$l")
-		done
+		[ "$want" = "$1" ] && return 0
 	done
-else
-	LAYOUT_LIST=("${ALL_LAYOUTS[@]}")
-fi
-[ "${#LAYOUT_LIST[@]}" -gt 0 ] || die "no matching layouts"
+	return 1
+}
 
 WORK="$(mktemp -d)"
 declare -a CLEANUP_LOOPS=()
+declare -a CLEANUP_VGS=()
 cleanup() {
 	set +e
-	for mp in "$WORK"/mnt_*; do [ -d "$mp" ] && umount "$mp" 2>/dev/null; done
+	for mp in "$WORK"/mnt_* "$WORK"/verify_*; do [ -d "$mp" ] && umount "$mp" 2>/dev/null; done
+	for vg in "${CLEANUP_VGS[@]}"; do
+		vgchange -an "$vg" 2>/dev/null
+		vgremove -f "$vg" 2>/dev/null
+	done
 	for d in "${CLEANUP_LOOPS[@]}"; do losetup -d "$d" 2>/dev/null; done
 	rm -rf "$WORK"
 }
@@ -186,17 +188,150 @@ EOF
 	[ "$ok" -eq 1 ]
 }
 
-for spec in "${LAYOUT_LIST[@]}"; do
-	name="${spec%%|*}"
-	if run_layout "$spec"; then
-		log "RESULT $name: PASS"
+# run_lvm_layout exercises the 'lvm' consistency strategy: an LVM PV partition
+# whose logical volumes stay mounted is frozen and imaged raw, then restored.
+run_lvm_layout() {
+	local name="lvm-ext4" vg="vgredotest"
+	log "=== layout: $name (LVM PV, 2 ext4 LVs, consistency=lvm) ==="
+
+	local img="$WORK/disk_$name.img"
+	truncate -s 800M "$img"
+	local loop base
+	loop="$(losetup -fP --show "$img")"
+	base="$(basename "$loop")"
+	CLEANUP_LOOPS+=("$loop")
+
+	# One partition spanning the disk, used as an LVM physical volume.
+	printf 'label: gpt\n,,L\n' | sfdisk "$loop" >/dev/null
+	partprobe "$loop" 2>/dev/null || true
+	local pv="${loop}p1"
+	wait_for_block "$pv" "$loop"
+
+	pvcreate -ff -y "$pv" >/dev/null
+	vgcreate "$vg" "$pv" >/dev/null
+	CLEANUP_VGS+=("$vg")
+	lvcreate -y -L 200M -n root "$vg" >/dev/null
+	lvcreate -y -L 200M -n home "$vg" >/dev/null
+	vgchange -ay "$vg" >/dev/null
+	vgmknodes "$vg" >/dev/null 2>&1 || true
+
+	# Format and fill the LVs; KEEP them mounted (the lvm strategy freezes them).
+	local -a lvs=(root home)
+	local i=0 lv dev mp
+	for lv in "${lvs[@]}"; do
+		i=$((i + 1))
+		dev="/dev/$vg/$lv"
+		wait_for_block "$dev" ""
+		mkfs.ext4 -q -F "$dev"
+		mp="$WORK/mnt_${name}_${i}"
+		mkdir -p "$mp"
+		mount "$dev" "$mp"
+		write_testdata "$mp"
+		checksum_tree "$mp" > "$WORK/sum_${name}_${i}.before"
+	done
+
+	# Backup: the lvm strategy freezes the mounted LV filesystems and images the
+	# PV partition raw (partclone.dd).
+	local dest="$WORK/backup_$name"
+	mkdir -p "$dest" /etc/redo-backups
+	cat > /etc/redo-backups/itest.conf <<EOF
+dest = $dest
+drive = $base
+parts = auto
+id = $name
+notes = integration $name
+consistency = lvm
+compressor = gzip
+EOF
+	if ! "$BIN" run itest; then
+		err "  backup command failed for $name"
+		return 1
+	fi
+	log "  backup produced:"
+	ls -la "$dest" | sed 's/^/[itest]     /'
+	if ! ls "$dest/${name}_"*.img >/dev/null 2>&1; then
+		err "  backup produced no .img chunks"
+		return 1
+	fi
+
+	# Tamper on the still-mounted LVs.
+	i=0
+	for lv in "${lvs[@]}"; do
+		i=$((i + 1))
+		tamper_fs "$WORK/mnt_${name}_${i}"
+	done
+
+	# Tear the VG down so the raw PV partition can be overwritten, restore, then
+	# bring the VG back from the restored image.
+	for lv in "${lvs[@]}"; do umount "/dev/$vg/$lv" 2>/dev/null || true; done
+	vgchange -an "$vg" >/dev/null 2>&1 || true
+	log "  restore (raw PV) onto /dev/$base"
+	"$here/restore.sh" "$dest/$name.redo" "$base"
+	partprobe "$loop" 2>/dev/null || true
+	pvscan --cache >/dev/null 2>&1 || true
+	vgchange -ay "$vg" >/dev/null 2>&1 || true
+	vgmknodes "$vg" >/dev/null 2>&1 || true
+
+	# Verify each LV: files back, marker gone.
+	local ok=1 marker_present
+	i=0
+	for lv in "${lvs[@]}"; do
+		i=$((i + 1))
+		dev="/dev/$vg/$lv"
+		wait_for_block "$dev" ""
+		mp="$WORK/verify_${name}_${i}"
+		mkdir -p "$mp"
+		mount "$dev" "$mp"
+		marker_present=0
+		[ -e "$mp/$TAMPER_MARKER" ] && marker_present=1
+		checksum_tree "$mp" > "$WORK/sum_${name}_${i}.after"
+		umount "$mp"
+		if [ "$marker_present" -eq 1 ]; then
+			err "  LV $lv: tamper marker survived restore"
+			ok=0
+		elif diff -u "$WORK/sum_${name}_${i}.before" "$WORK/sum_${name}_${i}.after" >/dev/null; then
+			log "  LV $lv: files restored, marker gone — OK"
+		else
+			err "  LV $lv: CONTENT MISMATCH after restore"
+			ok=0
+		fi
+	done
+
+	[ "$ok" -eq 1 ]
+}
+
+record_result() {
+	local label="$1" rc="$2"
+	if [ "$rc" -eq 0 ]; then
+		log "RESULT $label: PASS"
 		PASS=$((PASS + 1))
 	else
-		log "RESULT $name: FAIL"
+		log "RESULT $label: FAIL"
 		FAIL=$((FAIL + 1))
-		FAILED_NAMES="$FAILED_NAMES $name"
+		FAILED_NAMES="$FAILED_NAMES $label"
 	fi
+}
+
+ran_any=0
+for spec in "${ALL_LAYOUTS[@]}"; do
+	name="${spec%%|*}"
+	is_selected "$name" || continue
+	ran_any=1
+	if run_layout "$spec"; then record_result "$name" 0; else record_result "$name" 1; fi
 done
+
+if is_selected "lvm-ext4"; then
+	ran_any=1
+	if ! command -v pvcreate >/dev/null 2>&1; then
+		log "RESULT lvm-ext4: SKIP (lvm2 not installed)"
+	elif run_lvm_layout; then
+		record_result "lvm-ext4" 0
+	else
+		record_result "lvm-ext4" 1
+	fi
+fi
+
+[ "$ran_any" -eq 1 ] || die "no matching layouts"
 
 echo
 log "Summary: $PASS passed, $FAIL failed.${FAILED_NAMES:+ Failed:$FAILED_NAMES}"

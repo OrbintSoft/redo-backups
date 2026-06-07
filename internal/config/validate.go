@@ -14,11 +14,9 @@ var (
 )
 
 var validConsistency = map[Consistency]bool{
-	ConsistencyNone:          true,
-	ConsistencyFsfreeze:      true,
-	ConsistencyLVMSnapshot:   true,
-	ConsistencyBtrfsSnapshot: true,
-	ConsistencyRebootOffline: true,
+	ConsistencyNone:     true,
+	ConsistencyFsfreeze: true,
+	ConsistencyLVM:      true,
 }
 
 var validCompressor = map[Compressor]bool{

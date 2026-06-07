@@ -4,77 +4,94 @@ package snapshot
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/OrbintSoft/redo-backups/internal/config"
 	"github.com/OrbintSoft/redo-backups/internal/run"
 )
 
-// snapshotSuffix is appended to a logical volume's name to form its temporary
-// backup snapshot.
-const snapshotSuffix = "_redosnap"
-
-// LVMSnapshot images a point-in-time LVM snapshot of the target. It only applies
-// when the device to image is itself a logical volume: it creates a snapshot LV,
-// images the snapshot's block device, and removes the snapshot afterwards. This
-// gives a consistent image with only a brief write pause, at the cost of
-// requiring LVM and free space in the volume group.
-type LVMSnapshot struct {
+// LVM provides crash-consistency for an LVM physical-volume partition.
+//
+// A PV partition is imaged raw (partclone.dd), exactly as Redo Rescue does, so
+// the backup stays restorable from the Redo Rescue live CD. To make that raw
+// image consistent, this strategy freezes every mounted filesystem that lives on
+// the PV's logical volumes for the duration of imaging and thaws them again
+// afterwards. The imaged device is the PV partition itself, unchanged.
+//
+// Note this is NOT a logical-volume-level backup: imaging logical volumes
+// individually would produce images Redo Rescue cannot restore.
+type LVM struct {
 	Runner run.Runner
-	// SnapshotSize is the size argument passed to lvcreate (e.g. "10G" or
-	// "20%ORIGIN").
-	SnapshotSize string
 }
 
 // Name returns the configuration name of the strategy.
-func (*LVMSnapshot) Name() config.Consistency { return config.ConsistencyLVMSnapshot }
+func (*LVM) Name() config.Consistency { return config.ConsistencyLVM }
 
-// Prepare creates a snapshot of the target logical volume and returns the
-// snapshot's device path as the source to image.
-func (s *LVMSnapshot) Prepare(ctx context.Context, t Target) (Prepared, error) {
-	dev := t.DevicePath()
-
-	vg, lv, err := s.resolveLV(ctx, dev)
+// Prepare freezes every mounted filesystem in the device's subtree (the LVs of
+// the PV) and returns the PV partition unchanged as the source to image.
+func (s *LVM) Prepare(ctx context.Context, t Target) (Prepared, error) {
+	mounts, err := s.subtreeMounts(ctx, t.Device)
 	if err != nil {
 		return Prepared{}, err
 	}
 
-	snapName := lv + snapshotSuffix
-	origin := "/dev/" + vg + "/" + lv
-	if _, err := s.Runner.Run(ctx, run.Command{
-		Name: "lvcreate",
-		Args: []string{"--snapshot", "--name", snapName, "--size", s.SnapshotSize, origin},
-	}); err != nil {
-		return Prepared{}, fmt.Errorf("snapshot: creating LVM snapshot of %s: %w", origin, err)
+	var frozen []string
+	thaw := func() error {
+		var firstErr error
+		for _, mp := range frozen {
+			if _, err := s.Runner.Run(ctx, run.Command{Name: "fsfreeze", Args: []string{"-u", mp}}); err != nil && firstErr == nil {
+				firstErr = fmt.Errorf("snapshot: thawing %s: %w", mp, err)
+			}
+		}
+		return firstErr
 	}
 
-	snapDev := "/dev/" + vg + "/" + snapName
-	release := func() error {
-		if _, err := s.Runner.Run(ctx, run.Command{
-			Name: "lvremove", Args: []string{"--force", snapDev},
-		}); err != nil {
-			return fmt.Errorf("snapshot: removing LVM snapshot %s: %w", snapDev, err)
+	for _, mp := range mounts {
+		if _, err := s.Runner.Run(ctx, run.Command{Name: "fsfreeze", Args: []string{"-f", mp}}); err != nil {
+			_ = thaw()
+			return Prepared{}, fmt.Errorf("snapshot: freezing %s: %w", mp, err)
 		}
-		return nil
+		frozen = append(frozen, mp)
 	}
-	return Prepared{Source: snapDev, Release: release}, nil
+
+	return Prepared{Source: t.DevicePath(), Release: thaw}, nil
 }
 
-// resolveLV returns the volume group and logical volume names backing dev, or an
-// error if dev is not an LVM logical volume.
-func (s *LVMSnapshot) resolveLV(ctx context.Context, dev string) (vg, lv string, err error) {
+// subtreeMounts returns the mountpoints of the device and all its descendants
+// (for a PV partition, those are its logical volumes), via lsblk.
+func (s *LVM) subtreeMounts(ctx context.Context, dev string) ([]string, error) {
 	res, err := s.Runner.Run(ctx, run.Command{
-		Name: "lvs",
-		Args: []string{"--noheadings", "-o", "vg_name,lv_name", "--separator", "/", dev},
+		Name: "lsblk", Args: []string{"-J", "-o", "NAME,MOUNTPOINT", "/dev/" + dev},
 	})
 	if err != nil {
-		return "", "", fmt.Errorf("snapshot: %s is not an LVM logical volume: %w", dev, err)
+		return nil, fmt.Errorf("snapshot: listing %s: %w", dev, err)
 	}
-	out := strings.TrimSpace(string(res.Stdout))
-	slash := strings.IndexByte(out, '/')
-	if slash <= 0 || slash == len(out)-1 {
-		return "", "", fmt.Errorf("snapshot: could not parse lvs output %q for %s", out, dev)
+
+	var out struct {
+		BlockDevices []lvmNode `json:"blockdevices"`
 	}
-	return out[:slash], out[slash+1:], nil
+	if err := json.Unmarshal(res.Stdout, &out); err != nil {
+		return nil, fmt.Errorf("snapshot: parsing lsblk for %s: %w", dev, err)
+	}
+
+	var mounts []string
+	var walk func(nodes []lvmNode)
+	walk = func(nodes []lvmNode) {
+		for _, n := range nodes {
+			if n.Mountpoint != "" {
+				mounts = append(mounts, n.Mountpoint)
+			}
+			walk(n.Children)
+		}
+	}
+	walk(out.BlockDevices)
+	return mounts, nil
+}
+
+// lvmNode is the subset of lsblk output the LVM strategy reads.
+type lvmNode struct {
+	Name       string    `json:"name"`
+	Mountpoint string    `json:"mountpoint"`
+	Children   []lvmNode `json:"children"`
 }

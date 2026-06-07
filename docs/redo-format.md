@@ -161,18 +161,28 @@ produced format can be validated end-to-end.
 Backing up a **mounted, actively-written** filesystem with `partclone` can capture an
 inconsistent state. `redo-backups` makes the strategy configurable:
 
-| Strategy          | Status | How it works | Trade-off |
-|-------------------|--------|--------------|-----------|
-| `none`            | implemented | Read the live device as-is. | Fast, no requirements; **not crash-consistent** — only safe for idle/read-mostly filesystems. |
-| `fsfreeze`        | implemented | `fsfreeze -f` the mount, image it, `fsfreeze -u` afterwards. Unmounted targets are imaged directly. | Crash-consistent; **blocks writes** to that filesystem during imaging. Also the right choice for btrfs. |
-| `lvm-snapshot`    | implemented (strategy) | Snapshot the target logical volume (`lvcreate --snapshot`) and image the snapshot's block device. | Consistent with a brief write pause; requires LVM and free space in the VG. **Applies only when the imaged device is itself an LV** — see note below. |
-| `btrfs-snapshot`  | not implemented | — | Btrfs snapshots are subvolume-level filesystem objects, not block devices, so they do not fit block-level partclone imaging. Use `fsfreeze` for btrfs. |
-| `reboot-offline`  | planned | Run the backup at early boot with the root filesystem still unmounted. | Fully offline/consistent; most complex; deferred to a later step. |
+| Strategy   | How it works | Trade-off |
+|------------|--------------|-----------|
+| `none`     | Read the live device as-is. | Fast, no requirements; **not crash-consistent** — only safe for idle/read-mostly filesystems. |
+| `fsfreeze` | `fsfreeze -f` the partition's mount, image it, `fsfreeze -u` afterwards. Unmounted targets are imaged directly. | Crash-consistent; **blocks writes** to that filesystem during imaging. The right choice for directly-formatted partitions, **including btrfs**. |
+| `lvm`      | For an LVM physical-volume partition: freeze every mounted filesystem on the PV's logical volumes, then image the **PV partition raw** (`partclone.dd`), then thaw. | Crash-consistent and **restorable by Redo Rescue** (the imaged unit is the partition, exactly what Redo Rescue restores). Image is full-size (raw, no free-space skipping) and all those filesystems are briefly write-frozen together. |
 
-Because this tool images **block devices** (partitions) to stay compatible with Redo
-Rescue, only `none` and `fsfreeze` apply to the partition-based discovery today. The
-`lvm-snapshot` strategy is implemented but requires the backup target to be a logical
-volume; wiring LV discovery into target selection is a separate, planned step.
+### Why no LVM snapshots, and why not a "btrfs snapshot"?
+
+This tool images **block devices** (partitions) so that backups stay restorable by the
+stock Redo Rescue live CD, whose baremetal restore only recreates the partition table and
+writes each per-partition image back to `/dev/<part>` — it has **no concept of logical
+volumes or subvolumes**.
+
+- An **LVM snapshot** would let us image a *logical volume*, but an LV-level image is not
+  restorable by Redo Rescue (after restoring the partition table there is no VG/LV to
+  write it to). Redo Rescue instead images the whole **PV partition raw**. The `lvm`
+  strategy therefore keeps that raw-PV unit and adds consistency by freezing the LV
+  filesystems — see [internal/snapshot/lvm.go](../internal/snapshot/lvm.go).
+- A **btrfs snapshot** is a subvolume (a filesystem object), not a block device, so it
+  cannot be fed to `partclone`. For btrfs, use `fsfreeze`.
+- An **offline/reboot** strategy would just replicate what the Redo Rescue live CD already
+  does, so it is intentionally not provided.
 
 Configuration keys for these strategies are documented alongside the example
 configuration under [`examples/`](../examples/etc/redo-backups/example.conf).

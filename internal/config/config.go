@@ -19,11 +19,9 @@ type Consistency string
 
 // Consistency strategies.
 const (
-	ConsistencyNone          Consistency = "none"
-	ConsistencyFsfreeze      Consistency = "fsfreeze"
-	ConsistencyLVMSnapshot   Consistency = "lvm-snapshot"
-	ConsistencyBtrfsSnapshot Consistency = "btrfs-snapshot"
-	ConsistencyRebootOffline Consistency = "reboot-offline"
+	ConsistencyNone     Consistency = "none"
+	ConsistencyFsfreeze Consistency = "fsfreeze"
+	ConsistencyLVM      Consistency = "lvm"
 )
 
 // Compressor is the compression tool used for the image stream.
@@ -61,9 +59,6 @@ type Config struct {
 	SplitSize string
 	// Consistency selects the live-consistency strategy.
 	Consistency Consistency
-	// LVMSnapshotSize is the size argument for the LVM snapshot strategy
-	// (e.g. "10G" or "20%ORIGIN").
-	LVMSnapshotSize string
 }
 
 // DriveAuto reports whether the drive should be auto-detected.
@@ -75,11 +70,10 @@ func (c *Config) PartsAuto() bool { return len(c.Parts) == 0 }
 // defaults returns a Config pre-filled with default values.
 func defaults() *Config {
 	return &Config{
-		Drive:           auto,
-		Version:         redo.FormatVersion,
-		Compressor:      CompressorPigz,
-		SplitSize:       "4096M",
-		Consistency:     ConsistencyNone,
-		LVMSnapshotSize: "10%ORIGIN",
+		Drive:       auto,
+		Version:     redo.FormatVersion,
+		Compressor:  CompressorPigz,
+		SplitSize:   "4096M",
+		Consistency: ConsistencyNone,
 	}
 }

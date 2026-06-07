@@ -9,26 +9,35 @@ import (
 	"github.com/OrbintSoft/redo-backups/internal/run"
 )
 
-func TestLVMSnapshotPrepare(t *testing.T) {
-	r := run.NewFakeRunner()
-	r.AddStdout("lvs --noheadings -o vg_name,lv_name --separator / /dev/vg0-root", "  vg0/root\n")
-	s := &LVMSnapshot{Runner: r, SnapshotSize: "10%ORIGIN"}
+// lsblk output for a PV partition (sda2) with two mounted LVs and one unmounted.
+const lsblkPV = `{"blockdevices":[{"name":"sda2","mountpoint":null,"children":[
+  {"name":"vg0-root","mountpoint":"/"},
+  {"name":"vg0-home","mountpoint":"/home"},
+  {"name":"vg0-swap","mountpoint":null}
+]}]}`
 
-	p, err := s.Prepare(context.Background(), Target{Device: "vg0-root", Mountpoint: "/", FS: "ext4"})
+func TestLVMFreezesSubtree(t *testing.T) {
+	r := run.NewFakeRunner()
+	r.AddStdout("lsblk -J -o NAME,MOUNTPOINT /dev/sda2", lsblkPV)
+	s := &LVM{Runner: r}
+
+	p, err := s.Prepare(context.Background(), Target{Device: "sda2", FS: "LVM2_member"})
 	if err != nil {
 		t.Fatalf("Prepare: %v", err)
 	}
-	if p.Source != "/dev/vg0/root_redosnap" {
-		t.Errorf("Source = %q, want /dev/vg0/root_redosnap", p.Source)
+	if p.Source != "/dev/sda2" {
+		t.Errorf("Source = %q, want /dev/sda2 (the PV partition, imaged raw)", p.Source)
 	}
 	if err := p.Release(); err != nil {
 		t.Errorf("Release: %v", err)
 	}
 
 	want := []string{
-		"lvs --noheadings -o vg_name,lv_name --separator / /dev/vg0-root",
-		"lvcreate --snapshot --name root_redosnap --size 10%ORIGIN /dev/vg0/root",
-		"lvremove --force /dev/vg0/root_redosnap",
+		"lsblk -J -o NAME,MOUNTPOINT /dev/sda2",
+		"fsfreeze -f /",
+		"fsfreeze -f /home",
+		"fsfreeze -u /",
+		"fsfreeze -u /home",
 	}
 	got := r.CommandLines()
 	if len(got) != len(want) {
@@ -41,22 +50,31 @@ func TestLVMSnapshotPrepare(t *testing.T) {
 	}
 }
 
-func TestLVMSnapshotNotAnLV(t *testing.T) {
+func TestLVMNoMounts(t *testing.T) {
 	r := run.NewFakeRunner()
-	// lvs not programmed -> returns empty stdout, no error in fake. Parsing the
-	// empty output must fail.
-	s := &LVMSnapshot{Runner: r, SnapshotSize: "10G"}
-	if _, err := s.Prepare(context.Background(), Target{Device: "sda2"}); err == nil {
-		t.Fatal("expected error when target is not a logical volume")
+	r.AddStdout("lsblk -J -o NAME,MOUNTPOINT /dev/sda2",
+		`{"blockdevices":[{"name":"sda2","mountpoint":null,"children":[{"name":"vg0-swap","mountpoint":null}]}]}`)
+	s := &LVM{Runner: r}
+
+	p, err := s.Prepare(context.Background(), Target{Device: "sda2"})
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	if err := p.Release(); err != nil {
+		t.Errorf("Release: %v", err)
+	}
+	// Only the lsblk call; nothing to freeze.
+	if got := r.CommandLines(); len(got) != 1 {
+		t.Errorf("commands = %v, want only the lsblk call", got)
 	}
 }
 
-func TestLVMSnapshotLvsError(t *testing.T) {
+func TestLVMLsblkError(t *testing.T) {
 	r := run.NewFakeRunner()
-	r.Responses["lvs --noheadings -o vg_name,lv_name --separator / /dev/sda2"] = run.FakeResponse{Err: errBoomLVM}
-	s := &LVMSnapshot{Runner: r, SnapshotSize: "10G"}
+	r.Responses["lsblk -J -o NAME,MOUNTPOINT /dev/sda2"] = run.FakeResponse{Err: errBoomLVM}
+	s := &LVM{Runner: r}
 	if _, err := s.Prepare(context.Background(), Target{Device: "sda2"}); err == nil {
-		t.Fatal("expected error when lvs fails")
+		t.Fatal("expected error when lsblk fails")
 	}
 }
 

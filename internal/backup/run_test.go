@@ -143,7 +143,7 @@ func TestBackupPlan(t *testing.T) {
 func TestBackupRunConsistencyUnsupported(t *testing.T) {
 	f := fakeRunner()
 	cfg := baseConfig(t.TempDir())
-	cfg.Consistency = config.ConsistencyLVMSnapshot
+	cfg.Consistency = "btrfs-snapshot" // removed/unknown strategy
 	b := &Backup{Runner: f, Inspector: disk.New(f), Clock: fixedClock(), LogDir: t.TempDir()}
 
 	if _, err := b.Run(context.Background(), cfg); err == nil {
