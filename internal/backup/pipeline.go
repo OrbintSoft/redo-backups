@@ -25,8 +25,9 @@ type Pipeline struct {
 
 // partcloneStage builds the partclone command for a partition. tool is the
 // suffix from disk.FSTool; for the "dd" fallback the binary is partclone.dd and
-// the --clone flag is omitted, matching Redo Rescue.
-func partcloneStage(tool, dev, logfile string) run.Command {
+// the --clone flag is omitted, matching Redo Rescue. sourceDevice is the device
+// path to read (the original partition, or a snapshot device).
+func partcloneStage(tool, sourceDevice, logfile string) run.Command {
 	args := []string{}
 	if tool != disk.DDTool {
 		args = append(args, "--clone")
@@ -35,7 +36,7 @@ func partcloneStage(tool, dev, logfile string) run.Command {
 		"--force",
 		"--UI-fresh", "1",
 		"--logfile", logfile,
-		"--source", "/dev/"+dev,
+		"--source", sourceDevice,
 		"--no_block_detail",
 	)
 	return run.Command{Name: "partclone." + tool, Args: args}
@@ -62,12 +63,15 @@ func splitStage(splitSize, outDir, id, dev string) run.Command {
 }
 
 // PartitionPipeline assembles the full imaging pipeline for one partition.
-func PartitionPipeline(part disk.Partition, compressor, splitSize, logfile, outDir, id string) Pipeline {
+// sourceDevice is the device path partclone reads from (the original partition,
+// or a snapshot device when a snapshot strategy is in use); the output chunks are
+// always named after the original partition (part.Name).
+func PartitionPipeline(part disk.Partition, sourceDevice, compressor, splitSize, logfile, outDir, id string) Pipeline {
 	tool := disk.FSTool(part.FS)
 	return Pipeline{
 		Dev: part.Name,
 		Stages: []run.Command{
-			partcloneStage(tool, part.Name, logfile),
+			partcloneStage(tool, sourceDevice, logfile),
 			compressorStage(compressor),
 			splitStage(splitSize, outDir, id, part.Name),
 		},

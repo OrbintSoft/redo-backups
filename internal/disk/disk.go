@@ -36,6 +36,9 @@ type Partition struct {
 	FS string
 	// Label is the filesystem label (lsblk LABEL), possibly empty.
 	Label string
+	// Mountpoint is where the partition is currently mounted, or empty if it is
+	// not mounted.
+	Mountpoint string
 }
 
 // Drive describes a whole drive and its partitions.
@@ -67,6 +70,7 @@ type lsblkDevice struct {
 	FSType       string        `json:"fstype"`
 	PartTypeName string        `json:"parttypename"`
 	Label        string        `json:"label"`
+	Mountpoint   string        `json:"mountpoint"`
 	Type         string        `json:"type"`
 	Children     []lsblkDevice `json:"children"`
 }
@@ -81,7 +85,7 @@ func (i *Inspector) Drive(ctx context.Context, name string) (*Drive, error) {
 
 	res, err := i.Runner.Run(ctx, run.Command{
 		Name: "lsblk",
-		Args: []string{"-J", "-o", "NAME,SIZE,FSTYPE,PARTTYPENAME,LABEL,TYPE", "--", "/dev/" + name},
+		Args: []string{"-J", "-o", "NAME,SIZE,FSTYPE,PARTTYPENAME,LABEL,MOUNTPOINT,TYPE", "--", "/dev/" + name},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("disk: lsblk %s: %w", name, err)
@@ -112,12 +116,13 @@ func (i *Inspector) Drive(ctx context.Context, name string) (*Drive, error) {
 			return nil, err
 		}
 		drive.Partitions = append(drive.Partitions, Partition{
-			Name:  c.Name,
-			Bytes: pbytes,
-			Size:  c.Size,
-			Type:  c.PartTypeName,
-			FS:    c.FSType,
-			Label: c.Label,
+			Name:       c.Name,
+			Bytes:      pbytes,
+			Size:       c.Size,
+			Type:       c.PartTypeName,
+			FS:         c.FSType,
+			Label:      c.Label,
+			Mountpoint: c.Mountpoint,
 		})
 	}
 	return drive, nil
@@ -219,7 +224,7 @@ func findDevice(devs []lsblkDevice, name string) *lsblkDevice {
 
 // firstLine returns the first non-empty, trimmed line of s.
 func firstLine(s string) string {
-	for _, line := range strings.Split(s, "\n") {
+	for line := range strings.SplitSeq(s, "\n") {
 		if t := strings.TrimSpace(line); t != "" {
 			return t
 		}

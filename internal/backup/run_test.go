@@ -23,7 +23,7 @@ const lsblkSDA = `{"blockdevices":[{"name":"sda","size":"476.9G","type":"disk","
 
 func fakeRunner() *run.FakeRunner {
 	f := run.NewFakeRunner()
-	f.AddStdout("lsblk -J -o NAME,SIZE,FSTYPE,PARTTYPENAME,LABEL,TYPE -- /dev/sda", lsblkSDA)
+	f.AddStdout("lsblk -J -o NAME,SIZE,FSTYPE,PARTTYPENAME,LABEL,MOUNTPOINT,TYPE -- /dev/sda", lsblkSDA)
 	f.AddStdout("blockdev --getsize64 /dev/sda", "512110190592\n")
 	f.AddStdout("blockdev --getsize64 /dev/sda1", "133169152\n")
 	f.AddStdout("blockdev --getsize64 /dev/sda2", "299892736\n")
@@ -116,7 +116,7 @@ func TestBackupRunAutoDrive(t *testing.T) {
 func TestBackupRunConsistencyUnsupported(t *testing.T) {
 	f := fakeRunner()
 	cfg := baseConfig(t.TempDir())
-	cfg.Consistency = config.ConsistencyFsfreeze
+	cfg.Consistency = config.ConsistencyLVMSnapshot
 	b := &Backup{Runner: f, Inspector: disk.New(f), Clock: fixedClock(), LogDir: t.TempDir()}
 
 	if _, err := b.Run(context.Background(), cfg); err == nil {

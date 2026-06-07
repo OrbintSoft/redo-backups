@@ -45,7 +45,7 @@ const sampleLsblk = `{"blockdevices":[{"name":"sda","size":"476.9G","fstype":nul
 // fakeWithDrive returns a FakeRunner programmed with a typical small drive.
 func fakeWithDrive() *run.FakeRunner {
 	f := run.NewFakeRunner()
-	f.AddStdout("lsblk -J -o NAME,SIZE,FSTYPE,PARTTYPENAME,LABEL,TYPE -- /dev/sda", sampleLsblk)
+	f.AddStdout("lsblk -J -o NAME,SIZE,FSTYPE,PARTTYPENAME,LABEL,MOUNTPOINT,TYPE -- /dev/sda", sampleLsblk)
 	f.AddStdout("blockdev --getsize64 /dev/sda", "512110190592\n")
 	f.AddStdout("blockdev --getsize64 /dev/sda1", "133169152\n")
 	f.AddStdout("blockdev --getsize64 /dev/sda2", "299892736\n")

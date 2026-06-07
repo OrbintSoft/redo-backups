@@ -12,6 +12,7 @@ import (
 	"github.com/OrbintSoft/redo-backups/internal/config"
 	"github.com/OrbintSoft/redo-backups/internal/disk"
 	"github.com/OrbintSoft/redo-backups/internal/run"
+	"github.com/OrbintSoft/redo-backups/internal/snapshot"
 )
 
 // Backup orchestrates a full backup run. All system access goes through Runner
@@ -40,8 +41,9 @@ type Report struct {
 // MBR and partition table, writes the ".redo" descriptor, and images each
 // selected partition.
 func (b *Backup) Run(ctx context.Context, cfg *config.Config) (*Report, error) {
-	if cfg.Consistency != config.ConsistencyNone {
-		return nil, fmt.Errorf("backup: consistency strategy %q is not implemented yet", cfg.Consistency)
+	strategy, err := snapshot.For(cfg.Consistency, b.Runner)
+	if err != nil {
+		return nil, err
 	}
 
 	drive := cfg.Drive
@@ -101,13 +103,37 @@ func (b *Backup) Run(ctx context.Context, cfg *config.Config) (*Report, error) {
 	report := &Report{Drive: drive, ID: id, DescriptorPath: descPath}
 	for _, part := range parts {
 		logfile := filepath.Join(logDir, part.Name+".log")
-		pl := PartitionPipeline(part, cfg.Compressor, cfg.SplitSize, logfile, cfg.Dest, id)
-		if err := b.Runner.RunPipeline(ctx, pl.Stages); err != nil {
-			return nil, fmt.Errorf("backup: imaging %s: %w", part.Name, err)
+		if err := b.imagePartition(ctx, strategy, cfg, part, logfile, id); err != nil {
+			return nil, err
 		}
 		report.Partitions = append(report.Partitions, part.Name)
 	}
 	return report, nil
+}
+
+// imagePartition prepares the partition with the consistency strategy, runs the
+// imaging pipeline against the prepared source, and always releases the
+// preparation afterwards (even on failure).
+func (b *Backup) imagePartition(ctx context.Context, strategy snapshot.Strategy, cfg *config.Config, part disk.Partition, logfile, id string) (err error) {
+	prepared, err := strategy.Prepare(ctx, snapshot.Target{
+		Device:     part.Name,
+		Mountpoint: part.Mountpoint,
+		FS:         part.FS,
+	})
+	if err != nil {
+		return fmt.Errorf("backup: preparing %s: %w", part.Name, err)
+	}
+	defer func() {
+		if rerr := prepared.Release(); rerr != nil && err == nil {
+			err = rerr
+		}
+	}()
+
+	pl := PartitionPipeline(part, prepared.Source, cfg.Compressor, cfg.SplitSize, logfile, cfg.Dest, id)
+	if perr := b.Runner.RunPipeline(ctx, pl.Stages); perr != nil {
+		return fmt.Errorf("backup: imaging %s: %w", part.Name, perr)
+	}
+	return nil
 }
 
 func (b *Backup) now() time.Time {
