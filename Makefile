@@ -34,10 +34,18 @@ LDFLAGS := -X main.version=$(VERSION)
 # golangci-lint is invoked from PATH or, if absent there, from $(go env GOPATH)/bin.
 GOLANGCI_LINT ?= $(shell command -v golangci-lint 2>/dev/null || echo "$(shell $(GO) env GOPATH)/bin/golangci-lint")
 
+# Integration tests (Vagrant). VAGRANT can be set to e.g. "sudo vagrant" when the
+# provider needs root; LAYOUTS restricts which disk layouts run (empty = all).
+ITEST_DIR := test/integration
+VAGRANT   ?= vagrant
+LAYOUTS   ?=
+ITEST_RUN := sudo REDO_BACKUP_BIN=/opt/itest/redo-backup LAYOUTS='$(LAYOUTS)' /opt/itest/run-tests.sh
+
 .DEFAULT_GOAL := build
 
 # --- Phony targets ----------------------------------------------------------
-.PHONY: all build test race vet fmt fmt-check lint clean install uninstall help
+.PHONY: all build test race vet fmt fmt-check lint clean install uninstall \
+        integration integration-up integration-run integration-destroy help
 
 all: build ## Build everything (default)
 
@@ -83,6 +91,17 @@ uninstall: ## Remove the installed binary and example config
 	-rmdir --ignore-fail-on-non-empty $(DESTDIR)$(sysconfdir)/redo-backups 2>/dev/null || true
 	rm -f $(DESTDIR)$(docdir)/README.md $(DESTDIR)$(docdir)/redo-format.md
 	-rmdir --ignore-fail-on-non-empty $(DESTDIR)$(docdir) 2>/dev/null || true
+
+integration: integration-up integration-run ## Run the full Vagrant integration suite (build, up, run)
+
+integration-up: build ## Build the binary and boot/provision the integration VM
+	cd $(ITEST_DIR) && $(VAGRANT) up
+
+integration-run: ## Run the integration suite in the already-running VM (use LAYOUTS=... to filter)
+	cd $(ITEST_DIR) && $(VAGRANT) ssh -c "$(ITEST_RUN)"
+
+integration-destroy: ## Destroy the integration VM
+	cd $(ITEST_DIR) && $(VAGRANT) destroy -f
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \

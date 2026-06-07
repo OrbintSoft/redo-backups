@@ -18,6 +18,11 @@ here="$(cd "$(dirname "$0")" && pwd)"
 
 need_root
 
+# Prefer GNU coreutils (in /usr/bin on Alpine) over busybox applets in /bin so
+# that split/dd and friends support the long options the imaging pipeline relies
+# on. Child processes spawned by redo-backup inherit this PATH.
+export PATH="/usr/bin:$PATH"
+
 BIN="${REDO_BACKUP_BIN:-/redo-backups/bin/redo-backup}"
 [ -x "$BIN" ] || die "redo-backup binary not found/executable at $BIN (build it on the host with 'make build')"
 
@@ -118,9 +123,18 @@ notes = integration $name
 consistency = none
 EOF
 	log "  backup -> $dest"
-	"$BIN" run itest
+	if ! "$BIN" run itest; then
+		err "  backup command failed for $name"
+		return 1
+	fi
+	log "  backup produced:"
+	ls -la "$dest" | sed 's/^/[itest]     /'
 
 	[ -f "$dest/$name.redo" ] || { err "  descriptor $dest/$name.redo missing"; return 1; }
+	if ! ls "$dest/${name}_"*.img >/dev/null 2>&1; then
+		err "  backup produced no .img chunks (check partclone/pigz/split in the VM)"
+		return 1
+	fi
 
 	# Tamper: delete the files and drop a marker, so the restore has to bring the
 	# files back and remove the marker.
