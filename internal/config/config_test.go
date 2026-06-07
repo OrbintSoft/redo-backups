@@ -111,3 +111,19 @@ func TestInvalidProfileName(t *testing.T) {
 		t.Fatal("expected error for invalid profile name")
 	}
 }
+
+func TestListProfiles(t *testing.T) {
+	fsys := fstest.MapFS{
+		"weekly.conf":            &fstest.MapFile{Data: []byte("dest = /b\n")},
+		"nightly.conf":           &fstest.MapFile{Data: []byte("dest = /a\n")},
+		"nightly.conf.d/10.conf": &fstest.MapFile{Data: []byte("drive = sdb\n")}, // drop-in, not a profile
+		"notes.txt":              &fstest.MapFile{Data: []byte("ignore me\n")},
+	}
+	got, err := listProfilesFS(fsys)
+	if err != nil {
+		t.Fatalf("listProfilesFS: %v", err)
+	}
+	if !reflect.DeepEqual(got, []string{"nightly", "weekly"}) {
+		t.Errorf("profiles = %v, want [nightly weekly]", got)
+	}
+}

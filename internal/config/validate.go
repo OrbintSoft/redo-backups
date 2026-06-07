@@ -26,8 +26,10 @@ var validCompressor = map[Compressor]bool{
 	CompressorGzip: true,
 }
 
-// validate checks the resolved configuration for internal consistency.
-func (c *Config) validate() error {
+// Validate checks the resolved configuration for internal consistency. It is
+// exported so callers that mutate a loaded Config (e.g. CLI overrides) can
+// re-check it.
+func (c *Config) Validate() error {
 	if c.Dest == "" {
 		return fmt.Errorf("config: 'dest' is required")
 	}

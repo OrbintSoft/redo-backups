@@ -74,11 +74,28 @@ sudo ./redo-backup run example
 ```
 
 On success the destination directory contains `<id>.redo` and the `<id>_<dev>_NNN.img`
-chunks, restorable from the Redo Rescue live CD. Useful commands:
+chunks, restorable from the Redo Rescue live CD.
+
+## Commands
 
 ```sh
-redo-backup version
-redo-backup help
+redo-backup list                       # list available profiles
+redo-backup show <profile>             # print a profile's resolved config
+redo-backup run <profile>              # run the backup
+redo-backup run <profile> --dry-run    # preview the plan, touch nothing
+redo-backup version | help
+```
+
+Useful flags for `run` (also available where relevant):
+
+- `--config-dir <dir>` — use a profile directory other than `/etc/redo-backups`.
+- `--dry-run` — validate and print the imaging plan without touching disks.
+- Per-setting overrides: `--dest`, `--drive`, `--parts`, `--id`, `--notes`,
+  `--compressor`, `--split-size`, `--consistency`, `--lvm-snapshot-size`. These
+  override the profile and are re-validated. Example:
+
+```sh
+redo-backup run nightly --dest /mnt/usb --consistency fsfreeze --dry-run
 ```
 
 ## Requirements

@@ -112,6 +112,34 @@ func TestBackupRunAutoDrive(t *testing.T) {
 	}
 }
 
+func TestBackupPlan(t *testing.T) {
+	f := fakeRunner()
+	dest := t.TempDir()
+	b := &Backup{Runner: f, Inspector: disk.New(f), Clock: fixedClock(), LogDir: t.TempDir()}
+
+	plan, err := b.Plan(context.Background(), baseConfig(dest))
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if plan.Drive != "sda" || plan.ID != "20260105" {
+		t.Errorf("plan = %+v", plan)
+	}
+	if len(plan.Partitions) != 2 || plan.Partitions[0].Name != "sda1" {
+		t.Errorf("partitions = %+v", plan.Partitions)
+	}
+	if len(plan.Partitions[0].Commands) != 3 || plan.Partitions[0].Source != "/dev/sda1" {
+		t.Errorf("commands/source = %+v", plan.Partitions[0])
+	}
+
+	// Plan must not write the descriptor or run any imaging pipeline.
+	if _, err := os.Stat(filepath.Join(dest, "20260105.redo")); !os.IsNotExist(err) {
+		t.Errorf("Plan wrote a descriptor; it must not")
+	}
+	if len(f.Pipelines) != 0 {
+		t.Errorf("Plan executed %d pipelines; it must not run any", len(f.Pipelines))
+	}
+}
+
 func TestBackupRunConsistencyUnsupported(t *testing.T) {
 	f := fakeRunner()
 	cfg := baseConfig(t.TempDir())
