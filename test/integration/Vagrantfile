@@ -10,8 +10,9 @@
 # Rescue command sequence, and verifies the data round-trips.
 #
 # The redo-backup binary is NOT built inside the VM: build it on the host first
-# (`make build`) so the VM needs no Go toolchain. The repo is mounted at
-# /redo-backups and this directory at /vagrant.
+# (`make build`) so the VM needs no Go toolchain. Scripts and the binary are
+# pushed in with the file provisioner (scp) instead of a shared folder, so the
+# guest needs no rsync/NFS/9p.
 #
 # A lightweight Alpine box is used by default; override with REDO_ITEST_BOX
 # (provision.sh handles both apk- and apt-based distributions).
@@ -20,18 +21,18 @@
 #   make build                 # on the host, produces bin/redo-backup
 #   cd test/integration
 #   vagrant up
-#   vagrant ssh -c 'sudo /vagrant/run-tests.sh'
+#   vagrant ssh -c 'sudo /opt/itest/run-tests.sh'
 #   vagrant destroy -f
+
+ITEST_DIR = "/opt/itest".freeze
 
 Vagrant.configure("2") do |config|
   config.vm.box = ENV.fetch("REDO_ITEST_BOX", "generic/alpine319")
   config.vm.hostname = "redo-itest"
 
-  # Mount the repository (for the prebuilt binary and example config) and this
-  # harness directory. rsync keeps it simple across providers/guests.
-  config.vm.synced_folder "../../", "/redo-backups", type: "rsync",
-    rsync__exclude: [".git/", "dist/"]
-  config.vm.synced_folder ".", "/vagrant", type: "rsync"
+  # No shared folder: the default would require rsync/NFS/9p in the guest. We
+  # copy what we need with the file provisioner below instead.
+  config.vm.synced_folder ".", "/vagrant", disabled: true
 
   config.vm.provider "libvirt" do |lv|
     lv.memory = 1024
@@ -43,5 +44,23 @@ Vagrant.configure("2") do |config|
     vb.cpus = 2
   end
 
+  # 1. Install the runtime tools (provision.sh is uploaded by Vagrant itself).
   config.vm.provision "shell", path: "provision.sh"
+
+  # 2. Create a writable staging directory for the uploaded files.
+  config.vm.provision "shell", inline: "mkdir -p #{ITEST_DIR} && chmod 777 #{ITEST_DIR}"
+
+  # 3. Upload the harness scripts and the host-built binary.
+  %w[lib.sh restore.sh run-tests.sh].each do |f|
+    config.vm.provision "file", source: f, destination: "#{ITEST_DIR}/#{f}"
+  end
+  config.vm.provision "file", source: "../../bin/redo-backup",
+    destination: "#{ITEST_DIR}/redo-backup"
+
+  # 4. Make the binary and scripts executable, and point the harness at the
+  #    uploaded binary.
+  config.vm.provision "shell", inline: <<~SHELL
+    chmod +x #{ITEST_DIR}/redo-backup #{ITEST_DIR}/*.sh
+    echo 'export REDO_BACKUP_BIN=#{ITEST_DIR}/redo-backup' > /etc/profile.d/redo-itest.sh
+  SHELL
 end

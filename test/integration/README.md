@@ -43,12 +43,12 @@ compatible, restorable from the live CD".
 make build                       # produces bin/redo-backup (shared into the VM)
 
 cd test/integration
-vagrant up                       # boots and provisions the VM
-vagrant ssh -c 'sudo /vagrant/run-tests.sh'
+vagrant up                       # boots, provisions, and uploads the harness
+vagrant ssh -c 'sudo /opt/itest/run-tests.sh'
 vagrant destroy -f               # tear down
 
 # Run only some layouts:
-vagrant ssh -c 'sudo LAYOUTS="gpt-ext4 mbr-ext4" /vagrant/run-tests.sh'
+vagrant ssh -c 'sudo LAYOUTS="gpt-ext4 mbr-ext4" /opt/itest/run-tests.sh'
 ```
 
 The suite exits non-zero if any layout fails.

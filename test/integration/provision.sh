@@ -50,4 +50,4 @@ echo "Provisioned. Tool versions:"
 partclone.ext4 -v 2>&1 | head -1 || true
 pigz --version 2>&1 | head -1 || true
 lsblk --version 2>&1 | head -1 || true
-echo "Run the suite with: sudo /vagrant/run-tests.sh"
+echo "Run the suite with: sudo /opt/itest/run-tests.sh"
