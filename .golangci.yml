@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: EUPL-1.2
+version: "2"
+
+linters:
+  settings:
+    errcheck:
+      # Writes to stdout/stderr conventionally ignore their error return.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
