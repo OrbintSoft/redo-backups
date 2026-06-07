@@ -46,8 +46,10 @@ else
 	exit 1
 fi
 
-echo "Provisioned. Tool versions:"
-partclone.ext4 -v 2>&1 | head -1 || true
-pigz --version 2>&1 | head -1 || true
-lsblk --version 2>&1 | head -1 || true
+echo "Provisioned. Tool locations and versions:"
+for t in partclone.ext4 partclone.extfs partclone.fat partclone.xfs partclone.dd pigz split sfdisk lsblk blockdev; do
+	printf '  %-16s -> %s\n' "$t" "$(command -v "$t" 2>/dev/null || echo MISSING)"
+done
+echo "  split --version: $(split --version 2>&1 | head -1)"
+echo "  (a busybox 'split' here would break the imaging pipeline; GNU coreutils is required)"
 echo "Run the suite with: sudo /opt/itest/run-tests.sh"
