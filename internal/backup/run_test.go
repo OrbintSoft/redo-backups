@@ -5,6 +5,7 @@ package backup
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,10 +17,8 @@ import (
 	"github.com/OrbintSoft/redo-backups/internal/run"
 )
 
-const lsblkSDA = `{"blockdevices":[{"name":"sda","size":"476.9G","type":"disk","children":[
-  {"name":"sda1","size":"127M","fstype":"vfat","parttypename":"EFI System","label":"ESP","type":"part"},
-  {"name":"sda2","size":"286M","fstype":"ext4","parttypename":"Linux filesystem","label":"boot","type":"part"}
-]}]}`
+//go:embed testdata/lsblk-sda.json
+var lsblkSDA string
 
 func fakeRunner() *run.FakeRunner {
 	f := run.NewFakeRunner()

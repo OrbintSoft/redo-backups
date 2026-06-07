@@ -3,10 +3,14 @@
 package config
 
 import (
+	_ "embed"
 	"reflect"
 	"testing"
 	"testing/fstest"
 )
+
+//go:embed testdata/full-profile.conf
+var fullProfileConf string
 
 func TestLoadDefaults(t *testing.T) {
 	fsys := fstest.MapFS{
@@ -31,18 +35,7 @@ func TestLoadDefaults(t *testing.T) {
 }
 
 func TestLoadFull(t *testing.T) {
-	conf := `
-# Sample profile
-dest = /mnt/backup
-drive = sda
-parts = sda1, sda2 sda3
-id = nightly
-notes = "After emerge"
-compressor = gzip
-split_size = 2G
-consistency = fsfreeze
-`
-	fsys := fstest.MapFS{"box.conf": &fstest.MapFile{Data: []byte(conf)}}
+	fsys := fstest.MapFS{"box.conf": &fstest.MapFile{Data: []byte(fullProfileConf)}}
 	cfg, err := LoadFS(fsys, "box")
 	if err != nil {
 		t.Fatalf("LoadFS: %v", err)

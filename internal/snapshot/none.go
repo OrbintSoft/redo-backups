@@ -14,7 +14,7 @@ import (
 type None struct{}
 
 // Name returns the configuration name of the strategy.
-func (None) Name() string { return config.ConsistencyNone }
+func (None) Name() config.Consistency { return config.ConsistencyNone }
 
 // Prepare returns the original device unchanged.
 func (None) Prepare(_ context.Context, t Target) (Prepared, error) {

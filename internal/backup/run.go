@@ -129,7 +129,7 @@ func (b *Backup) imagePartition(ctx context.Context, strategy snapshot.Strategy,
 		}
 	}()
 
-	pl := PartitionPipeline(part, prepared.Source, cfg.Compressor, cfg.SplitSize, logfile, cfg.Dest, id)
+	pl := PartitionPipeline(part, prepared.Source, string(cfg.Compressor), cfg.SplitSize, logfile, cfg.Dest, id)
 	if perr := b.Runner.RunPipeline(ctx, pl.Stages); perr != nil {
 		return fmt.Errorf("backup: imaging %s: %w", part.Name, perr)
 	}

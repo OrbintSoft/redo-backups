@@ -10,19 +10,19 @@ import (
 	"github.com/OrbintSoft/redo-backups/internal/run"
 )
 
-func cfgFor(name string) *config.Config {
+func cfgFor(name config.Consistency) *config.Config {
 	return &config.Config{Consistency: name, LVMSnapshotSize: "10%ORIGIN"}
 }
 
 func TestForSelection(t *testing.T) {
 	r := run.NewFakeRunner()
-	for _, name := range []string{config.ConsistencyNone, config.ConsistencyFsfreeze, config.ConsistencyLVMSnapshot} {
+	for _, name := range []config.Consistency{config.ConsistencyNone, config.ConsistencyFsfreeze, config.ConsistencyLVMSnapshot} {
 		s, err := For(cfgFor(name), r)
 		if err != nil || s.Name() != name {
 			t.Errorf("%s: s=%v err=%v", name, s, err)
 		}
 	}
-	for _, name := range []string{config.ConsistencyBtrfsSnapshot, config.ConsistencyRebootOffline, "bogus"} {
+	for _, name := range []config.Consistency{config.ConsistencyBtrfsSnapshot, config.ConsistencyRebootOffline, "bogus"} {
 		if _, err := For(cfgFor(name), r); err == nil {
 			t.Errorf("expected error for strategy %q", name)
 		}

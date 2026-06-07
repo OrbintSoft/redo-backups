@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/OrbintSoft/redo-backups/actions/workflows/ci.yml/badge.svg)](https://github.com/OrbintSoft/redo-backups/actions/workflows/ci.yml)
 [![Release](https://github.com/OrbintSoft/redo-backups/actions/workflows/release.yml/badge.svg)](https://github.com/OrbintSoft/redo-backups/actions/workflows/release.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OrbintSoft/redo-backups/badges/coverage.json)](https://github.com/OrbintSoft/redo-backups/actions/workflows/coverage.yml)
 [![License: EUPL-1.2](https://img.shields.io/badge/license-EUPL--1.2-blue.svg)](LICENSE)
 
 Create **live** disk/partition backups that are **100% compatible with

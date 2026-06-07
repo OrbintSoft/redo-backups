@@ -5,11 +5,15 @@ package disk
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"testing"
 
 	"github.com/OrbintSoft/redo-backups/internal/redo"
 	"github.com/OrbintSoft/redo-backups/internal/run"
 )
+
+//go:embed testdata/lsblk-sda.json
+var sampleLsblk string
 
 func TestFSTool(t *testing.T) {
 	cases := map[string]string{
@@ -36,11 +40,6 @@ func TestFSTool(t *testing.T) {
 		}
 	}
 }
-
-const sampleLsblk = `{"blockdevices":[{"name":"sda","size":"476.9G","fstype":null,"parttypename":null,"label":null,"type":"disk","children":[
-  {"name":"sda1","size":"127M","fstype":"vfat","parttypename":"EFI System","label":"ESP","type":"part"},
-  {"name":"sda2","size":"286M","fstype":"ext4","parttypename":"Linux filesystem","label":"boot","type":"part"}
-]}]}`
 
 // fakeWithDrive returns a FakeRunner programmed with a typical small drive.
 func fakeWithDrive() *run.FakeRunner {
