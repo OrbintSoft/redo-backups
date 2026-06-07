@@ -57,14 +57,25 @@ func (ExecRunner) RunPipeline(ctx context.Context, cmds []Command) error {
 	// close the parent's copies so EOF propagates as each stage finishes.
 	closeAll(parentEnds)
 
-	var firstErr error
+	// Wait for every stage and collect all failures. An upstream stage often
+	// fails with a broken pipe only because a downstream stage died first, so
+	// reporting every failing stage (not just the first) surfaces the real cause.
+	var failures []string
 	for i := range procs {
-		if err := procs[i].cmd.Wait(); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("run pipeline: %q failed: %w (stderr: %s)",
-				cmds[i].String(), err, strings.TrimSpace(procs[i].stderr.String()))
+		err := procs[i].cmd.Wait()
+		if err == nil {
+			continue
 		}
+		msg := fmt.Sprintf("%q: %v", cmds[i].String(), err)
+		if stderr := strings.TrimSpace(procs[i].stderr.String()); stderr != "" {
+			msg += " (stderr: " + stderr + ")"
+		}
+		failures = append(failures, msg)
 	}
-	return firstErr
+	if len(failures) > 0 {
+		return fmt.Errorf("run pipeline: %s", strings.Join(failures, "; "))
+	}
+	return nil
 }
 
 type execProc struct {

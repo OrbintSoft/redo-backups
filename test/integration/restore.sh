@@ -64,8 +64,7 @@ sed "s#/dev/$orig#/dev/$target#g" "$sfd" | sfdisk --force "/dev/$target"
 sync
 
 # 4. Re-read the partition table.
-partprobe "/dev/$target" || true
-sleep 1
+partprobe "/dev/$target" 2>/dev/null || true
 
 # 5. Restore each partition image with partclone.
 while IFS=$'\t' read -r name fs; do
@@ -73,6 +72,7 @@ while IFS=$'\t' read -r name fs; do
 	tool="$(fs_tool "$fs")"
 	# Map the original partition name to the target drive.
 	tgt_part="${name/$orig/$target}"
+	wait_for_block "/dev/$tgt_part" "/dev/$target"
 	shopt -s nullglob
 	images=( "$dest/${id}_${name}_"*.img )
 	shopt -u nullglob

@@ -11,6 +11,23 @@ need_root() {
 	[ "$(id -u)" -eq 0 ] || die "must run as root"
 }
 
+# wait_for_block waits until block device $1 exists, re-reading the partition
+# table of its parent loop device $2 each try. Loop-device partition nodes can
+# lag the partition-table write, especially on systems without udev.
+wait_for_block() {
+	local dev="$1" loop="$2" _
+	for _ in $(seq 1 30); do
+		[ -b "$dev" ] && return 0
+		if [ -n "$loop" ]; then
+			partprobe "$loop" 2>/dev/null || true
+			partx -u "$loop" 2>/dev/null || true
+		fi
+		command -v udevadm >/dev/null 2>&1 && udevadm settle --timeout=2 2>/dev/null || true
+		sleep 0.5
+	done
+	[ -b "$dev" ] || die "block device $dev never appeared"
+}
+
 # fs_tool maps a filesystem name to the partclone tool suffix, mirroring
 # internal/disk.FSTool (and Redo Rescue's get_fs_tool).
 fs_tool() {

@@ -84,8 +84,7 @@ run_layout() {
 		sfdscript+=",${sz}MiB,L"$'\n'
 	done
 	printf '%s' "$sfdscript" | sfdisk "$loop" >/dev/null
-	partprobe "$loop" || true
-	sleep 1
+	partprobe "$loop" 2>/dev/null || true
 
 	# Format, fill, and snapshot checksums for each partition.
 	local idx=0
@@ -95,6 +94,7 @@ run_layout() {
 		local fs="${ps%%:*}"
 		fslist+=("$fs")
 		local part="${loop}p${idx}"
+		wait_for_block "$part" "$loop"
 		log "  mkfs.$fs $part"
 		case "$fs" in
 			vfat) mkfs.vfat "$part" >/dev/null ;;
@@ -160,6 +160,7 @@ EOF
 	for fs in "${fslist[@]}"; do
 		idx=$((idx + 1))
 		local part="${loop}p${idx}"
+		wait_for_block "$part" "$loop"
 		local mp="$WORK/verify_${name}_${idx}"
 		mkdir -p "$mp"
 		mount "$part" "$mp"
