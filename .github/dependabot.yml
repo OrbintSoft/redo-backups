@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: EUPL-1.2
+#
+# Dependabot keeps dependencies up to date, opening a PR when an update is
+# available. It runs weekly.
+#
+# Note: Dependabot does not support Vagrant boxes, so the integration VM image
+# (test/integration/Vagrantfile) is not auto-updated here; bump REDO_ITEST_BOX
+# manually when needed.
+version: 2
+updates:
+  # Go modules (currently stdlib-only, but covers the go directive and any future
+  # third-party module).
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "build"
+    labels:
+      - "dependencies"
+
+  # GitHub Actions used by the CI/release/integration workflows.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+      - "github-actions"

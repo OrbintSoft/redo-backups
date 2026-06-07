@@ -13,7 +13,7 @@ var (
 	splitSizeRE = regexp.MustCompile(`^[0-9]+[A-Za-z]*$`)
 )
 
-var validConsistency = map[string]bool{
+var validConsistency = map[Consistency]bool{
 	ConsistencyNone:          true,
 	ConsistencyFsfreeze:      true,
 	ConsistencyLVMSnapshot:   true,
@@ -21,7 +21,7 @@ var validConsistency = map[string]bool{
 	ConsistencyRebootOffline: true,
 }
 
-var validCompressor = map[string]bool{
+var validCompressor = map[Compressor]bool{
 	CompressorPigz: true,
 	CompressorGzip: true,
 }

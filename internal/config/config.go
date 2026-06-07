@@ -14,19 +14,25 @@ import (
 // DefaultDir is where profiles live on a running system.
 const DefaultDir = "/etc/redo-backups"
 
-// Consistency strategies for live filesystems (see docs/redo-format.md).
+// Consistency is a live-filesystem consistency strategy (see docs/redo-format.md).
+type Consistency string
+
+// Consistency strategies.
 const (
-	ConsistencyNone          = "none"
-	ConsistencyFsfreeze      = "fsfreeze"
-	ConsistencyLVMSnapshot   = "lvm-snapshot"
-	ConsistencyBtrfsSnapshot = "btrfs-snapshot"
-	ConsistencyRebootOffline = "reboot-offline"
+	ConsistencyNone          Consistency = "none"
+	ConsistencyFsfreeze      Consistency = "fsfreeze"
+	ConsistencyLVMSnapshot   Consistency = "lvm-snapshot"
+	ConsistencyBtrfsSnapshot Consistency = "btrfs-snapshot"
+	ConsistencyRebootOffline Consistency = "reboot-offline"
 )
+
+// Compressor is the compression tool used for the image stream.
+type Compressor string
 
 // Supported compressors.
 const (
-	CompressorPigz = "pigz"
-	CompressorGzip = "gzip"
+	CompressorPigz Compressor = "pigz"
+	CompressorGzip Compressor = "gzip"
 )
 
 // Sentinel value meaning "detect automatically" for drive/parts.
@@ -50,11 +56,11 @@ type Config struct {
 	// Version is the on-disk format version to write.
 	Version string
 	// Compressor is the compression tool ("pigz" or "gzip").
-	Compressor string
+	Compressor Compressor
 	// SplitSize is the chunk size passed to split (e.g. "4096M").
 	SplitSize string
 	// Consistency selects the live-consistency strategy.
-	Consistency string
+	Consistency Consistency
 	// LVMSnapshotSize is the size argument for the LVM snapshot strategy
 	// (e.g. "10G" or "20%ORIGIN").
 	LVMSnapshotSize string

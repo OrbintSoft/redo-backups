@@ -42,7 +42,7 @@ type Prepared struct {
 // Strategy prepares partitions for consistent imaging.
 type Strategy interface {
 	// Name returns the strategy's configuration name.
-	Name() string
+	Name() config.Consistency
 	// Prepare readies the target for imaging.
 	Prepare(ctx context.Context, t Target) (Prepared, error)
 }

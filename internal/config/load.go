@@ -150,13 +150,13 @@ func fromMap(m map[string]string) (*Config, error) {
 		cfg.Version = v
 	}
 	if v, ok := m["compressor"]; ok {
-		cfg.Compressor = v
+		cfg.Compressor = Compressor(v)
 	}
 	if v, ok := m["split_size"]; ok {
 		cfg.SplitSize = v
 	}
 	if v, ok := m["consistency"]; ok {
-		cfg.Consistency = v
+		cfg.Consistency = Consistency(v)
 	}
 	if v, ok := m["lvm_snapshot_size"]; ok {
 		cfg.LVMSnapshotSize = v
