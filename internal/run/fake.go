@@ -20,6 +20,12 @@ type FakeRunner struct {
 
 	// Calls records, in order, every command passed to Run.
 	Calls []Command
+
+	// Pipelines records, in order, every pipeline passed to RunPipeline.
+	Pipelines [][]Command
+
+	// PipelineErr, if set, is returned by every RunPipeline call.
+	PipelineErr error
 }
 
 // FakeResponse is the canned outcome for a single command.
@@ -53,6 +59,15 @@ func (f *FakeRunner) Run(_ context.Context, cmd Command) (Result, error) {
 		return resp.Result, resp.Err
 	}
 	return Result{}, nil
+}
+
+// RunPipeline records the pipeline and returns PipelineErr (nil by default).
+func (f *FakeRunner) RunPipeline(_ context.Context, cmds []Command) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	clone := append([]Command(nil), cmds...)
+	f.Pipelines = append(f.Pipelines, clone)
+	return f.PipelineErr
 }
 
 // CommandLines returns the String() form of every recorded call, in order.

@@ -123,6 +123,37 @@ func (i *Inspector) Drive(ctx context.Context, name string) (*Drive, error) {
 	return drive, nil
 }
 
+// RootDrive detects the whole drive that hosts the root filesystem. It resolves
+// the source device of "/" with findmnt, then asks lsblk for that device's
+// parent kernel device (PKNAME), e.g. "/dev/sda2" -> "sda".
+func (i *Inspector) RootDrive(ctx context.Context) (string, error) {
+	src, err := i.Runner.Run(ctx, run.Command{
+		Name: "findmnt", Args: []string{"-n", "-o", "SOURCE", "/"},
+	})
+	if err != nil {
+		return "", fmt.Errorf("disk: finding root source: %w", err)
+	}
+	source := strings.TrimSpace(string(src.Stdout))
+	if source == "" {
+		return "", fmt.Errorf("disk: could not determine root source device")
+	}
+
+	pk, err := i.Runner.Run(ctx, run.Command{
+		Name: "lsblk", Args: []string{"-n", "-o", "PKNAME", source},
+	})
+	if err != nil {
+		return "", fmt.Errorf("disk: finding parent of %s: %w", source, err)
+	}
+	name := firstLine(string(pk.Stdout))
+	if name == "" {
+		return "", fmt.Errorf("disk: %s has no parent disk", source)
+	}
+	if err := validateDevName(name); err != nil {
+		return "", err
+	}
+	return name, nil
+}
+
 // MBR returns the first redo.MBRSize bytes of the drive (MBR plus GPT primary
 // area), read with dd, matching Redo Rescue's extract_mbr.
 func (i *Inspector) MBR(ctx context.Context, drive string) ([]byte, error) {
@@ -184,6 +215,16 @@ func findDevice(devs []lsblkDevice, name string) *lsblkDevice {
 		}
 	}
 	return nil
+}
+
+// firstLine returns the first non-empty, trimmed line of s.
+func firstLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		if t := strings.TrimSpace(line); t != "" {
+			return t
+		}
+	}
+	return ""
 }
 
 // validateDevName guards against path traversal / shell-special characters in a

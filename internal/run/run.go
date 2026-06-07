@@ -46,6 +46,10 @@ type Runner interface {
 	// reported both via Result.ExitCode and as a non-nil error, so callers may
 	// inspect either.
 	Run(ctx context.Context, cmd Command) (Result, error)
+
+	// RunPipeline executes cmds connected stdout->stdin, left to right. It
+	// returns an error if any stage fails.
+	RunPipeline(ctx context.Context, cmds []Command) error
 }
 
 // ExecRunner is the production Runner backed by os/exec.

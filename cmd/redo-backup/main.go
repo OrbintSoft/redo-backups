@@ -8,8 +8,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+
+	"github.com/OrbintSoft/redo-backups/internal/backup"
+	"github.com/OrbintSoft/redo-backups/internal/config"
+	"github.com/OrbintSoft/redo-backups/internal/disk"
+	"github.com/OrbintSoft/redo-backups/internal/run"
 )
 
 // version is the redo-backups tool version (distinct from the Redo Rescue
@@ -28,12 +34,12 @@ file, optionally extended by drop-ins in <profile>.conf.d/*.conf.
 `
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(dispatch(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-// run dispatches a single CLI invocation and returns a process exit code. It
+// dispatch handles a single CLI invocation and returns a process exit code. It
 // takes its arguments and output streams as parameters so it can be tested.
-func run(args []string, stdout, stderr *os.File) int {
+func dispatch(args []string, stdout, stderr *os.File) int {
 	if len(args) == 0 {
 		fmt.Fprint(stderr, usage)
 		return 2
@@ -60,10 +66,27 @@ func run(args []string, stdout, stderr *os.File) int {
 	}
 }
 
-// cmdRun will load the profile and execute the backup. The orchestration is
-// implemented in a later step; for now it reports that clearly rather than
-// silently doing nothing.
-func cmdRun(profile string, _, stderr *os.File) int {
-	fmt.Fprintf(stderr, "error: backup execution is not implemented yet (profile %q)\n", profile)
-	return 1
+// cmdRun loads the named profile and executes the backup it describes.
+func cmdRun(profile string, stdout, stderr *os.File) int {
+	cfg, err := config.Load(config.DefaultDir, profile)
+	if err != nil {
+		fmt.Fprintln(stderr, "error:", err)
+		return 1
+	}
+
+	runner := run.ExecRunner{}
+	b := &backup.Backup{
+		Runner:    runner,
+		Inspector: disk.New(runner),
+	}
+
+	report, err := b.Run(context.Background(), cfg)
+	if err != nil {
+		fmt.Fprintln(stderr, "error:", err)
+		return 1
+	}
+
+	fmt.Fprintf(stdout, "Backup %s complete on drive %s: wrote %s (%d partition(s): %v)\n",
+		report.ID, report.Drive, report.DescriptorPath, len(report.Partitions), report.Partitions)
+	return 0
 }
