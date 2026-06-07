@@ -44,16 +44,37 @@ Backups are configured under `/etc/redo-backups/`:
 - optional per-profile drop-in directory `/etc/redo-backups/<profile>.conf.d/*.conf`,
   applied in lexical order, with later files overriding earlier ones and the base profile.
 
-Each backup is then run by profile name (planned CLI):
+A ready-to-edit profile with every setting documented is provided under
+[examples/etc/redo-backups/](examples/etc/redo-backups/).
+
+All settings and the consistency strategies (`none` and `fsfreeze` are implemented;
+`lvm-snapshot` is implemented for LV devices; `btrfs-snapshot` and `reboot-offline` are
+not yet) are documented in [docs/redo-format.md](docs/redo-format.md) and in the example
+configuration.
+
+## Quick start
+
+Build the binary (Go 1.26+):
 
 ```sh
-redo-backup run <profile>
+go build -o redo-backup ./cmd/redo-backup
 ```
 
-All settings and the consistency strategies (`none`, `fsfreeze`, `lvm-snapshot`,
-`btrfs-snapshot`, and the planned `reboot-offline`) are documented in
-[docs/redo-format.md](docs/redo-format.md) and in the example configuration under
-`examples/`.
+Install a profile and run it (imaging needs root):
+
+```sh
+sudo install -D -m 0644 examples/etc/redo-backups/example.conf /etc/redo-backups/example.conf
+sudo editor /etc/redo-backups/example.conf      # set 'dest', pick a consistency strategy
+sudo ./redo-backup run example
+```
+
+On success the destination directory contains `<id>.redo` and the `<id>_<dev>_NNN.img`
+chunks, restorable from the Redo Rescue live CD. Useful commands:
+
+```sh
+redo-backup version
+redo-backup help
+```
 
 ## Requirements
 
