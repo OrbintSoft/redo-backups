@@ -45,7 +45,9 @@ func NewFakeRunner() *FakeRunner {
 func (f *FakeRunner) AddStdout(key, stdout string) *FakeRunner {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
 	f.Responses[key] = FakeResponse{Result: Result{Stdout: []byte(stdout)}}
+
 	return f
 }
 
@@ -54,10 +56,12 @@ func (f *FakeRunner) AddStdout(key, stdout string) *FakeRunner {
 func (f *FakeRunner) Run(_ context.Context, cmd Command) (Result, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
 	f.Calls = append(f.Calls, cmd)
 	if resp, ok := f.Responses[cmd.String()]; ok {
 		return resp.Result, resp.Err
 	}
+
 	return Result{}, nil
 }
 
@@ -65,8 +69,10 @@ func (f *FakeRunner) Run(_ context.Context, cmd Command) (Result, error) {
 func (f *FakeRunner) RunPipeline(_ context.Context, cmds []Command) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
 	clone := append([]Command(nil), cmds...)
 	f.Pipelines = append(f.Pipelines, clone)
+
 	return f.PipelineErr
 }
 
@@ -74,10 +80,12 @@ func (f *FakeRunner) RunPipeline(_ context.Context, cmds []Command) error {
 func (f *FakeRunner) CommandLines() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
 	out := make([]string, len(f.Calls))
 	for i, c := range f.Calls {
 		out[i] = c.String()
 	}
+
 	return out
 }
 

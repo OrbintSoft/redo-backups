@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: EUPL-1.2
-//
+
 // Package config loads backup profiles from /etc/redo-backups/. A profile is a
 // "<profile>.conf" file in key=value form, optionally extended by drop-in files
 // under "<profile>.conf.d/*.conf" (applied in lexical order, later values
@@ -70,7 +70,11 @@ func (c *Config) PartsAuto() bool { return len(c.Parts) == 0 }
 // defaults returns a Config pre-filled with default values.
 func defaults() *Config {
 	return &Config{
+		Dest:        "",
 		Drive:       auto,
+		Parts:       nil,
+		ID:          "",
+		Notes:       "",
 		Version:     redo.FormatVersion,
 		Compressor:  CompressorPigz,
 		SplitSize:   "4096M",

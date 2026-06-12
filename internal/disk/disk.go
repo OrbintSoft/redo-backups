@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: EUPL-1.2
-//
+
 // Package disk inspects block devices to gather the facts a backup needs: the
 // partition layout, per-device sizes, the drive's MBR/GPT header, and the
 // partition table. All system access goes through a run.Runner so the logic is
@@ -9,6 +9,7 @@ package disk
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -21,6 +22,16 @@ import (
 // devNameRE matches a bare device name such as "sda", "sda1" or "nvme0n1p2"
 // (no "/dev/" prefix, no path separators).
 var devNameRE = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
+// Sentinel inspection errors. Dynamic context (the device name, sizes) is added
+// by wrapping these with %w, so they remain matchable with errors.Is.
+var (
+	errDriveNotFound  = errors.New("disk: drive not found in lsblk output")
+	errNoRootSource   = errors.New("disk: could not determine root source device")
+	errNoParentDisk   = errors.New("disk: device has no parent disk")
+	errMBRSize        = errors.New("disk: unexpected MBR size")
+	errInvalidDevName = errors.New("disk: invalid device name")
+)
 
 // Partition describes one partition discovered on a drive.
 type Partition struct {
@@ -98,7 +109,7 @@ func (i *Inspector) Drive(ctx context.Context, name string) (*Drive, error) {
 
 	dev := findDevice(out.BlockDevices, name)
 	if dev == nil {
-		return nil, fmt.Errorf("disk: drive %q not found in lsblk output", name)
+		return nil, fmt.Errorf("%w: %q", errDriveNotFound, name)
 	}
 
 	driveBytes, err := i.devBytes(ctx, name)
@@ -106,15 +117,18 @@ func (i *Inspector) Drive(ctx context.Context, name string) (*Drive, error) {
 		return nil, err
 	}
 
-	drive := &Drive{Name: name, Bytes: driveBytes}
+	drive := &Drive{Name: name, Bytes: driveBytes, Partitions: nil}
+
 	for _, c := range dev.Children {
 		if c.Type != "part" {
 			continue
 		}
+
 		pbytes, err := i.devBytes(ctx, c.Name)
 		if err != nil {
 			return nil, err
 		}
+
 		drive.Partitions = append(drive.Partitions, Partition{
 			Name:       c.Name,
 			Bytes:      pbytes,
@@ -125,6 +139,7 @@ func (i *Inspector) Drive(ctx context.Context, name string) (*Drive, error) {
 			Mountpoint: c.Mountpoint,
 		})
 	}
+
 	return drive, nil
 }
 
@@ -138,9 +153,10 @@ func (i *Inspector) RootDrive(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("disk: finding root source: %w", err)
 	}
+
 	source := strings.TrimSpace(string(src.Stdout))
 	if source == "" {
-		return "", fmt.Errorf("disk: could not determine root source device")
+		return "", errNoRootSource
 	}
 
 	pk, err := i.Runner.Run(ctx, run.Command{
@@ -149,13 +165,16 @@ func (i *Inspector) RootDrive(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("disk: finding parent of %s: %w", source, err)
 	}
+
 	name := firstLine(string(pk.Stdout))
 	if name == "" {
-		return "", fmt.Errorf("disk: %s has no parent disk", source)
+		return "", fmt.Errorf("%w: %s", errNoParentDisk, source)
 	}
+
 	if err := validateDevName(name); err != nil {
 		return "", err
 	}
+
 	return name, nil
 }
 
@@ -165,6 +184,7 @@ func (i *Inspector) MBR(ctx context.Context, drive string) ([]byte, error) {
 	if err := validateDevName(drive); err != nil {
 		return nil, err
 	}
+
 	res, err := i.Runner.Run(ctx, run.Command{
 		Name: "dd",
 		Args: []string{"if=/dev/" + drive, "bs=32k", "count=1"},
@@ -172,9 +192,12 @@ func (i *Inspector) MBR(ctx context.Context, drive string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("disk: reading MBR of %s: %w", drive, err)
 	}
+
 	if len(res.Stdout) != redo.MBRSize {
-		return nil, fmt.Errorf("disk: MBR of %s: expected %d bytes, got %d", drive, redo.MBRSize, len(res.Stdout))
+		return nil, fmt.Errorf("%w for %s: expected %d bytes, got %d",
+			errMBRSize, drive, redo.MBRSize, len(res.Stdout))
 	}
+
 	return res.Stdout, nil
 }
 
@@ -184,6 +207,7 @@ func (i *Inspector) PartitionTable(ctx context.Context, drive string) ([]byte, e
 	if err := validateDevName(drive); err != nil {
 		return nil, err
 	}
+
 	res, err := i.Runner.Run(ctx, run.Command{
 		Name: "sfdisk",
 		Args: []string{"--dump", "/dev/" + drive},
@@ -191,6 +215,7 @@ func (i *Inspector) PartitionTable(ctx context.Context, drive string) ([]byte, e
 	if err != nil {
 		return nil, fmt.Errorf("disk: dumping partition table of %s: %w", drive, err)
 	}
+
 	return res.Stdout, nil
 }
 
@@ -203,11 +228,14 @@ func (i *Inspector) devBytes(ctx context.Context, name string) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("disk: size of %s: %w", name, err)
 	}
+
 	s := strings.TrimSpace(string(res.Stdout))
+
 	n, err := strconv.ParseInt(s, 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("disk: parsing size of %s (%q): %w", name, s, err)
 	}
+
 	return n, nil
 }
 
@@ -219,6 +247,7 @@ func findDevice(devs []lsblkDevice, name string) *lsblkDevice {
 			return &devs[idx]
 		}
 	}
+
 	return nil
 }
 
@@ -229,6 +258,7 @@ func firstLine(s string) string {
 			return t
 		}
 	}
+
 	return ""
 }
 
@@ -237,7 +267,8 @@ func firstLine(s string) string {
 // early gives clearer errors.
 func validateDevName(name string) error {
 	if !devNameRE.MatchString(name) {
-		return fmt.Errorf("disk: invalid device name %q", name)
+		return fmt.Errorf("%w %q", errInvalidDevName, name)
 	}
+
 	return nil
 }

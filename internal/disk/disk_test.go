@@ -16,6 +16,8 @@ import (
 var sampleLsblk string
 
 func TestFSTool(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]string{
 		"ext4":     "extfs",
 		"ext2":     "extfs",
@@ -48,21 +50,28 @@ func fakeWithDrive() *run.FakeRunner {
 	f.AddStdout("blockdev --getsize64 /dev/sda", "512110190592\n")
 	f.AddStdout("blockdev --getsize64 /dev/sda1", "133169152\n")
 	f.AddStdout("blockdev --getsize64 /dev/sda2", "299892736\n")
+
 	return f
 }
 
 func TestDrive(t *testing.T) {
+	t.Parallel()
+
 	insp := New(fakeWithDrive())
+
 	d, err := insp.Drive(context.Background(), "sda")
 	if err != nil {
 		t.Fatalf("Drive: %v", err)
 	}
+
 	if d.Name != "sda" || d.Bytes != 512110190592 {
 		t.Errorf("drive = %+v", d)
 	}
+
 	if len(d.Partitions) != 2 {
 		t.Fatalf("got %d partitions, want 2", len(d.Partitions))
 	}
+
 	want := []Partition{
 		{Name: "sda1", Bytes: 133169152, Size: "127M", Type: "EFI System", FS: "vfat", Label: "ESP"},
 		{Name: "sda2", Bytes: 299892736, Size: "286M", Type: "Linux filesystem", FS: "ext4", Label: "boot"},
@@ -75,6 +84,8 @@ func TestDrive(t *testing.T) {
 }
 
 func TestDriveInvalidName(t *testing.T) {
+	t.Parallel()
+
 	insp := New(run.NewFakeRunner())
 	if _, err := insp.Drive(context.Background(), "../sda"); err == nil {
 		t.Fatal("expected error for invalid device name")
@@ -82,6 +93,8 @@ func TestDriveInvalidName(t *testing.T) {
 }
 
 func TestMBR(t *testing.T) {
+	t.Parallel()
+
 	f := run.NewFakeRunner()
 	mbr := bytes.Repeat([]byte{0xAB}, redo.MBRSize)
 	f.Responses["dd if=/dev/sda bs=32k count=1"] = run.FakeResponse{Result: run.Result{Stdout: mbr}}
@@ -90,13 +103,17 @@ func TestMBR(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MBR: %v", err)
 	}
+
 	if !bytes.Equal(got, mbr) {
 		t.Errorf("MBR content mismatch")
 	}
 }
 
 func TestMBRWrongSize(t *testing.T) {
+	t.Parallel()
+
 	f := run.NewFakeRunner()
+
 	f.Responses["dd if=/dev/sda bs=32k count=1"] = run.FakeResponse{Result: run.Result{Stdout: []byte("short")}}
 	if _, err := New(f).MBR(context.Background(), "sda"); err == nil {
 		t.Fatal("expected error for short MBR read")
@@ -104,12 +121,16 @@ func TestMBRWrongSize(t *testing.T) {
 }
 
 func TestPartitionTable(t *testing.T) {
+	t.Parallel()
+
 	dump := "label: gpt\ndevice: /dev/sda\n"
 	f := run.NewFakeRunner().AddStdout("sfdisk --dump /dev/sda", dump)
+
 	got, err := New(f).PartitionTable(context.Background(), "sda")
 	if err != nil {
 		t.Fatalf("PartitionTable: %v", err)
 	}
+
 	if string(got) != dump {
 		t.Errorf("got %q, want %q", got, dump)
 	}

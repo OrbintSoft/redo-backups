@@ -5,7 +5,7 @@ name: Coverage
 # orphan 'badges' branch. No third-party coverage service is used.
 on:
   push:
-    branches: [main, master]
+    branches: [master]
   workflow_dispatch:
 
 permissions:
@@ -21,7 +21,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: stable
+          go-version-file: go.mod
           cache: true
 
       - name: Measure coverage

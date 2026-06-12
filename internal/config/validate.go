@@ -3,6 +3,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 )
@@ -11,6 +12,19 @@ var (
 	devNameRE   = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 	idRE        = regexp.MustCompile(`^[a-zA-Z0-9_.-]+$`)
 	splitSizeRE = regexp.MustCompile(`^[0-9]+[A-Za-z]*$`)
+)
+
+// Sentinel validation errors. Dynamic context (the offending value) is added by
+// wrapping these with %w, so callers can still match them with errors.Is.
+var (
+	errDestRequired       = errors.New("config: 'dest' is required")
+	errInvalidDrive       = errors.New("config: invalid 'drive' value")
+	errInvalidPartName    = errors.New("config: invalid partition name")
+	errInvalidID          = errors.New("config: invalid 'id' value")
+	errVersionEmpty       = errors.New("config: 'version' must not be empty")
+	errInvalidCompressor  = errors.New("config: invalid 'compressor'")
+	errInvalidSplitSize   = errors.New("config: invalid 'split_size'")
+	errInvalidConsistency = errors.New("config: invalid 'consistency'")
 )
 
 var validConsistency = map[Consistency]bool{
@@ -29,30 +43,38 @@ var validCompressor = map[Compressor]bool{
 // re-check it.
 func (c *Config) Validate() error {
 	if c.Dest == "" {
-		return fmt.Errorf("config: 'dest' is required")
+		return errDestRequired
 	}
+
 	if !c.DriveAuto() && !devNameRE.MatchString(c.Drive) {
-		return fmt.Errorf("config: invalid 'drive' value %q", c.Drive)
+		return fmt.Errorf("%w %q", errInvalidDrive, c.Drive)
 	}
+
 	for _, p := range c.Parts {
 		if !devNameRE.MatchString(p) {
-			return fmt.Errorf("config: invalid partition name %q in 'parts'", p)
+			return fmt.Errorf("%w %q in 'parts'", errInvalidPartName, p)
 		}
 	}
+
 	if c.ID != "" && !idRE.MatchString(c.ID) {
-		return fmt.Errorf("config: invalid 'id' value %q", c.ID)
+		return fmt.Errorf("%w %q", errInvalidID, c.ID)
 	}
+
 	if c.Version == "" {
-		return fmt.Errorf("config: 'version' must not be empty")
+		return errVersionEmpty
 	}
+
 	if !validCompressor[c.Compressor] {
-		return fmt.Errorf("config: invalid 'compressor' %q (want pigz or gzip)", c.Compressor)
+		return fmt.Errorf("%w %q (want pigz or gzip)", errInvalidCompressor, c.Compressor)
 	}
+
 	if !splitSizeRE.MatchString(c.SplitSize) {
-		return fmt.Errorf("config: invalid 'split_size' %q", c.SplitSize)
+		return fmt.Errorf("%w %q", errInvalidSplitSize, c.SplitSize)
 	}
+
 	if !validConsistency[c.Consistency] {
-		return fmt.Errorf("config: invalid 'consistency' %q", c.Consistency)
+		return fmt.Errorf("%w %q", errInvalidConsistency, c.Consistency)
 	}
+
 	return nil
 }

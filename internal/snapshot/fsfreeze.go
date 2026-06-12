@@ -10,6 +10,10 @@ import (
 	"github.com/OrbintSoft/redo-backups/internal/run"
 )
 
+// cmdFsfreeze is the util-linux command used to freeze (`-f`) and thaw (`-u`)
+// mounted filesystems for crash-consistent imaging.
+const cmdFsfreeze = "fsfreeze"
+
 // Fsfreeze freezes a mounted filesystem with `fsfreeze -f` for the duration of
 // imaging and thaws it with `fsfreeze -u` afterwards, yielding a crash-consistent
 // image at the cost of blocking writes while imaging runs. Unmounted targets are
@@ -31,18 +35,20 @@ func (s *Fsfreeze) Prepare(ctx context.Context, t Target) (Prepared, error) {
 	}
 
 	if _, err := s.Runner.Run(ctx, run.Command{
-		Name: "fsfreeze", Args: []string{"-f", t.Mountpoint},
+		Name: cmdFsfreeze, Args: []string{"-f", t.Mountpoint},
 	}); err != nil {
 		return Prepared{}, fmt.Errorf("snapshot: freezing %s: %w", t.Mountpoint, err)
 	}
 
 	release := func() error {
 		if _, err := s.Runner.Run(ctx, run.Command{
-			Name: "fsfreeze", Args: []string{"-u", t.Mountpoint},
+			Name: cmdFsfreeze, Args: []string{"-u", t.Mountpoint},
 		}); err != nil {
 			return fmt.Errorf("snapshot: thawing %s: %w", t.Mountpoint, err)
 		}
+
 		return nil
 	}
+
 	return Prepared{Source: source, Release: release}, nil
 }

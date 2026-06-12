@@ -28,6 +28,33 @@ wait_for_block() {
 	[ -b "$dev" ] || die "block device $dev never appeared"
 }
 
+# activate_vg brings volume group $1 online and waits until every named logical
+# volume ($2, $3, ...) has a device node. LVM autoactivation is driven by udev
+# events, which loop devices don't emit, so after a raw PV restore we rescan and
+# retry vgchange/vgmknodes by hand until the nodes appear. On timeout it dumps
+# the LVM state (so CI logs show *why* activation failed) and dies. Plain pvscan
+# is used, not `pvscan --cache`, which is a no-op without the lvmetad daemon.
+activate_vg() {
+	local vg="$1"; shift
+	# Device-node directory; overridable so the retry logic is testable without
+	# real LVM (defaults to /dev, i.e. /dev/<vg>/<lv>).
+	local dev="${LVM_DEV_PREFIX:-/dev}"
+	local lv _ all
+	pvscan >/dev/null 2>&1 || true
+	for _ in $(seq 1 30); do
+		vgchange -ay "$vg" >/dev/null 2>&1 || true
+		vgmknodes "$vg" >/dev/null 2>&1 || true
+		all=1
+		for lv in "$@"; do [ -b "$dev/$vg/$lv" ] || all=0; done
+		[ "$all" -eq 1 ] && return 0
+		command -v udevadm >/dev/null 2>&1 && udevadm settle --timeout=2 2>/dev/null || true
+		sleep 0.5
+	done
+	err "could not activate all LVs in $vg after restore; LVM state follows:"
+	{ pvscan; vgs; lvs; vgchange -ay "$vg"; } 2>&1 | sed 's/^/[itest]     /' || true
+	die "logical volumes in $vg never appeared after restore"
+}
+
 # fs_tool maps a filesystem name to the partclone tool suffix, mirroring
 # internal/disk.FSTool (and Redo Rescue's get_fs_tool).
 fs_tool() {

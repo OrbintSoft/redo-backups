@@ -30,6 +30,7 @@ func fakeRunner() *run.FakeRunner {
 		Result: run.Result{Stdout: bytes.Repeat([]byte{0}, redo.MBRSize)},
 	}
 	f.AddStdout("sfdisk --dump /dev/sda", "label: gpt\ndevice: /dev/sda\n")
+
 	return f
 }
 
@@ -50,6 +51,8 @@ func fixedClock() func() time.Time {
 }
 
 func TestBackupRun(t *testing.T) {
+	t.Parallel()
+
 	f := fakeRunner()
 	dest := t.TempDir()
 	b := &Backup{Runner: f, Inspector: disk.New(f), Clock: fixedClock(), LogDir: t.TempDir()}
@@ -62,6 +65,7 @@ func TestBackupRun(t *testing.T) {
 	if rep.ID != "20260105" || rep.Drive != "sda" {
 		t.Errorf("report = %+v", rep)
 	}
+
 	if len(rep.Partitions) != 2 {
 		t.Errorf("partitions = %v", rep.Partitions)
 	}
@@ -71,10 +75,12 @@ func TestBackupRun(t *testing.T) {
 	if rep.DescriptorPath != descPath {
 		t.Errorf("DescriptorPath = %q", rep.DescriptorPath)
 	}
+
 	data, err := os.ReadFile(descPath)
 	if err != nil {
 		t.Fatalf("read descriptor: %v", err)
 	}
+
 	if !bytes.Contains(data, []byte(`"id":"20260105"`)) || !bytes.Contains(data, []byte(`"notes":"test run"`)) {
 		t.Errorf("descriptor content unexpected: %s", data)
 	}
@@ -83,10 +89,12 @@ func TestBackupRun(t *testing.T) {
 	if len(f.Pipelines) != 2 {
 		t.Fatalf("got %d pipelines, want 2", len(f.Pipelines))
 	}
+
 	first := f.Pipelines[0]
 	if len(first) != 3 || first[0].Name != "partclone.fat" {
 		t.Errorf("first pipeline = %v", first)
 	}
+
 	wantSplit := "split --numeric-suffixes=1 --suffix-length=3 --additional-suffix=.img --bytes=4096M - " +
 		filepath.Join(dest, "20260105_sda1_")
 	if first[2].String() != wantSplit {
@@ -95,6 +103,8 @@ func TestBackupRun(t *testing.T) {
 }
 
 func TestBackupRunAutoDrive(t *testing.T) {
+	t.Parallel()
+
 	f := fakeRunner()
 	f.AddStdout("findmnt -n -o SOURCE /", "/dev/sda2\n")
 	f.AddStdout("lsblk -n -o PKNAME /dev/sda2", "sda\n")
@@ -107,12 +117,15 @@ func TestBackupRunAutoDrive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
+
 	if rep.Drive != "sda" {
 		t.Errorf("auto-detected drive = %q, want sda", rep.Drive)
 	}
 }
 
 func TestBackupPlan(t *testing.T) {
+	t.Parallel()
+
 	f := fakeRunner()
 	dest := t.TempDir()
 	b := &Backup{Runner: f, Inspector: disk.New(f), Clock: fixedClock(), LogDir: t.TempDir()}
@@ -121,12 +134,15 @@ func TestBackupPlan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
+
 	if plan.Drive != "sda" || plan.ID != "20260105" {
 		t.Errorf("plan = %+v", plan)
 	}
+
 	if len(plan.Partitions) != 2 || plan.Partitions[0].Name != "sda1" {
 		t.Errorf("partitions = %+v", plan.Partitions)
 	}
+
 	if len(plan.Partitions[0].Commands) != 3 || plan.Partitions[0].Source != "/dev/sda1" {
 		t.Errorf("commands/source = %+v", plan.Partitions[0])
 	}
@@ -135,12 +151,15 @@ func TestBackupPlan(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dest, "20260105.redo")); !os.IsNotExist(err) {
 		t.Errorf("Plan wrote a descriptor; it must not")
 	}
+
 	if len(f.Pipelines) != 0 {
 		t.Errorf("Plan executed %d pipelines; it must not run any", len(f.Pipelines))
 	}
 }
 
 func TestBackupRunConsistencyUnsupported(t *testing.T) {
+	t.Parallel()
+
 	f := fakeRunner()
 	cfg := baseConfig(t.TempDir())
 	cfg.Consistency = "btrfs-snapshot" // removed/unknown strategy
@@ -152,6 +171,8 @@ func TestBackupRunConsistencyUnsupported(t *testing.T) {
 }
 
 func TestBackupRunPipelineFailure(t *testing.T) {
+	t.Parallel()
+
 	f := fakeRunner()
 	f.PipelineErr = errBoom
 	b := &Backup{Runner: f, Inspector: disk.New(f), Clock: fixedClock(), LogDir: t.TempDir()}

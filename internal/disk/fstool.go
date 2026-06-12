@@ -39,5 +39,6 @@ func FSTool(fs string) string {
 			return r.tool
 		}
 	}
+
 	return DDTool
 }

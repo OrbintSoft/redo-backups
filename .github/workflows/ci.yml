@@ -3,7 +3,7 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [master]
   pull_request:
   workflow_dispatch:
 
@@ -20,18 +20,11 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: stable
+          go-version-file: go.mod
           cache: true
 
-      - name: Check formatting
-        run: |
-          unformatted=$(gofmt -l .)
-          if [ -n "$unformatted" ]; then
-            echo "These files are not gofmt-formatted:"
-            echo "$unformatted"
-            exit 1
-          fi
-
+      # Formatting (gofumpt) is enforced by the golangci-lint job below, which
+      # bundles gofumpt as a formatter; no separate gofmt check is needed here.
       - name: Vet
         run: go vet ./...
 
@@ -40,6 +33,27 @@ jobs:
 
       - name: Test
         run: go test -race ./...
+
+  leakcheck:
+    name: Goroutine leak detector
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Go 1.26's experimental goroutine leak profile. GOEXPERIMENT arms it; the
+      # per-package TestMain in internal/leakcheck then fails the run if any
+      # goroutine is left blocked on an unreachable concurrency primitive. Drop
+      # the env once the profile is on by default (planned for Go 1.27).
+      - name: Test with leak detector
+        run: go test ./...
+        env:
+          GOEXPERIMENT: goroutineleakprofile
 
   lint:
     name: golangci-lint
@@ -50,13 +64,71 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: stable
+          go-version-file: go.mod
           cache: true
 
-      # @latest resolves to the newest golangci-lint v2 release (the /v2 module
-      # path keeps it within v2; bump the path when v3 lands).
+      # Version pinned and bumped by Renovate (.github/renovate.json5). The /v2
+      # module path keeps it within golangci-lint v2; bump the path when v3 lands.
       - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 
       - name: Lint
-        run: "$(go env GOPATH)/bin/golangci-lint run ./..."
+        run: '"$(go env GOPATH)/bin/golangci-lint" run ./...'
+
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Lints the GitHub Actions workflow files. Version pinned and bumped by
+      # Renovate (renovate.json5). actionlint also runs shellcheck on `run:`
+      # scripts, which is preinstalled on the runner.
+      - name: Install actionlint
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
+      - name: Lint workflows
+        run: '"$(go env GOPATH)/bin/actionlint" -color'
+
+  checkmake:
+    name: checkmake
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Lints the Makefile. Version pinned and bumped by Renovate
+      # (renovate.json5). Rules are tuned in checkmake.ini.
+      - name: Install checkmake
+        run: go install github.com/checkmake/checkmake/cmd/checkmake@v0.3.2
+
+      - name: Lint Makefile
+        run: '"$(go env GOPATH)/bin/checkmake" Makefile'
+
+  renovate-config:
+    name: renovate-config-validator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      # Validates renovate.json5 against the Renovate config schema. The npm
+      # `renovate` version is pinned and bumped by Renovate (renovate.json5);
+      # --strict makes warnings (e.g. deprecated options) fail the job.
+      - name: Validate Renovate config
+        run: npx --yes --package renovate@43.220.0 -- renovate-config-validator --strict

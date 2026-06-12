@@ -2,10 +2,120 @@
 version: "2"
 
 linters:
+  # Enable every linter, then disable individually only where a rule is
+  # genuinely counterproductive, nonsensical, or bug-inducing for this project.
+  default: all
+  disable:
+    # Would rename the JSON tags (drive_bytes, mbr_bin, sfd_bin) that make up the
+    # external .redo on-disk format (docs/redo-format.md); renaming them breaks
+    # compatibility with Redo Rescue.
+    - tagliatelle
+    # Unconfigured it bans the project's own internal/* packages via its default
+    # "Main" list. depguard forbids external dependencies under an explicit
+    # policy, which this project does not need.
+    - depguard
+    # Bans the idiomatic `if err := f(); err != nil { ... }`; obeying it would
+    # only widen the scope of err and make the code less idiomatic.
+    - noinlineerr
+    # Superseded by wsl_v5, which `default: all` also enables; running both
+    # versions of the same whitespace linter is redundant.
+    - wsl
+    # Deprecated since v2.12.0 and superseded by gomodguard_v2, which
+    # `default: all` also enables; keeping the old one only prints a warning.
+    - gomodguard
+    # The flagged globals (knownKeys, validConsistency, validCompressor,
+    # fsToolRules) are immutable lookup tables, which Go cannot express as const;
+    # a package-level var is the idiomatic representation.
+    - gochecknoglobals
+    # The project intentionally unit-tests unexported helpers from inside the
+    # package (white-box); a black-box "<pkg>_test" package would prevent that.
+    - testpackage
   settings:
+    cyclop:
+      # The default max of 10 flags this project's validation and orchestration
+      # functions (config.Validate, config.fromMap, config.LoadFS, backup.Run,
+      # run.RunPipeline), whose cyclomatic count is one branch per independent
+      # field or pipeline stage — essential, linear complexity, not tangled
+      # logic. 12 is a modest bump that still catches genuinely sprawling
+      # functions while not forcing counterproductive splits of cohesive code.
+      max-complexity: 12
     errcheck:
       # Writes to stdout/stderr conventionally ignore their error return.
       exclude-functions:
         - fmt.Fprint
         - fmt.Fprintf
         - fmt.Fprintln
+    exhaustruct:
+      exclude:
+        # run.Command.Stdin is an optional input stream omitted by the many
+        # commands that take no stdin; requiring `Stdin: nil` on every command
+        # literal is noise, not safety. Other structs stay fully enforced.
+        - 'github\.com/OrbintSoft/redo-backups/internal/run\.Command$'
+    wrapcheck:
+      # Errors crossing this project's own internal package boundaries are
+      # already prefixed with their package name and need no re-wrapping; only
+      # flag truly external (e.g. stdlib) errors.
+      ignore-package-globs:
+        - github.com/OrbintSoft/redo-backups/internal/**
+    varnamelen:
+      # Conventional short names (loop indices, io.Reader/Writer, receivers,
+      # buffers) are clear from context. Allow two-rune names and the common
+      # single-rune names below.
+      min-name-length: 2
+      ignore-names:
+        - i
+        - r
+        - w
+        - b
+        - c
+        - d
+        - f
+        - k
+        - p
+        - s
+        - t
+        - v
+  exclusions:
+    rules:
+      # Test fixtures legitimately carry long literal lines (e.g. a base64 or
+      # JSON sample) and intentionally set only the fields under test, so do not
+      # enforce line length or exhaustive struct literals on them.
+      - path: _test\.go
+        linters:
+          - lll
+          - exhaustruct
+          # Repeated literals across independent test cases (device names like
+          # "sda2", filesystem names) are intentional and keep each case
+          # self-contained; constant-extracting them hurts readability.
+          - goconst
+          # Tests read and write fixtures/golden files under their own temp
+          # directories with paths they construct themselves; the file-inclusion
+          # (G304) and permission (G301/G306) hardening gosec wants does not apply.
+          - gosec
+          # Table-driven tests branch once per case/subtest; that structural
+          # complexity is not a code smell worth splitting the test over.
+          - cyclop
+      # fake.go is test-support code (FakeRunner has a sync.Mutex that cannot be
+      # set in a literal, FakeResponse/Result use zero values); same rationale as
+      # the test files above.
+      - path: fake\.go
+        linters:
+          - exhaustruct
+      # fsToolRules in fstool.go is a declarative lookup table; its filesystem
+      # and partclone-tool strings are data, not duplication worth extracting.
+      - path: fstool\.go
+        linters:
+          - goconst
+
+# Report every finding rather than golangci-lint's default capped summary
+# (max-same-issues 3, max-issues-per-linter 50), so nothing is silently hidden.
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+# gofumpt is a stricter superset of gofmt. golangci-lint bundles it as a
+# formatter, so no extra binary is needed: `golangci-lint run` flags files that
+# are not gofumpt-formatted and `golangci-lint fmt` rewrites them.
+formatters:
+  enable:
+    - gofumpt

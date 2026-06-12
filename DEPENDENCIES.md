@@ -18,12 +18,31 @@ Needed to compile, test, lint, and release the project.
 
 | Tool | Purpose | Notes |
 |------|---------|-------|
-| **Go** ≥ 1.26 | Compile and test | `go 1.26` in [go.mod](go.mod) is the minimum; CI runs on the latest `stable` Go. |
+| **Go** ≥ 1.26 | Compile and test | `go 1.26` in [go.mod](go.mod) is the single source of truth; CI reads it via `go-version-file: go.mod`. Bumped by Renovate. |
+| `GOEXPERIMENT=goroutineleakprofile` | Goroutine leak detection in tests (`make leakcheck`, CI `leakcheck` job) | Build-time toggle that arms Go 1.26's experimental `goroutineleak` pprof profile. The per-package `TestMain` in [internal/leakcheck](internal/leakcheck/) fails the suite on goroutines left blocked on an unreachable concurrency primitive; without the toggle the profile is absent and the check is a no-op. Planned to be on by default in Go 1.27 — drop the toggle then. |
 | **git** | Version stamping | `make` derives the version from `git describe`. Optional; falls back to `dev`. |
 | **make** | Convenience build/install | Optional; you can call `go`/`install` directly. |
-| **golangci-lint** v2 | Linting (`make lint`, CI) | CI installs the latest v2 via `go install ...@latest`. |
-| **GoReleaser** | Release builds & packaging | Release workflow uses `version: latest` (tar.gz, deb, rpm, snap). |
+| **golangci-lint** v2 | Linting **and** formatting (`make lint`, `make fmt`, CI) | CI installs a pinned v2 via `go install ...@vX.Y.Z`; the pin is bumped by Renovate. Bundles **gofumpt** (a stricter superset of gofmt) as the formatter (`.golangci.yml` → `formatters`), so `golangci-lint run` flags non-gofumpt files and `golangci-lint fmt` rewrites them — no separate gofmt/gofumpt binary is needed. |
+| **actionlint** | Linting the GitHub Actions workflows (`make actionlint`, CI) | CI installs a pinned version via `go install github.com/rhysd/actionlint/cmd/actionlint@vX.Y.Z`; the pin is bumped by Renovate. Also runs **shellcheck** on `run:` scripts when shellcheck is on `PATH`. |
+| **checkmake** | Linting the Makefile (`make checkmake`, CI) | CI installs a pinned version via `go install github.com/checkmake/checkmake/cmd/checkmake@vX.Y.Z`; the pin is bumped by Renovate. Rules are tuned in [checkmake.ini](checkmake.ini). |
+| **Node.js** ≥ 24.11 | Running `renovate-config-validator` | Only for the Renovate config check (`make renovate-validate`, CI via `actions/setup-node`). Not needed to build or run `redo-backups`. |
+| **renovate** (npm) | Validating [renovate.json5](renovate.json5) (`make renovate-validate`, CI) | Provides `renovate-config-validator`. Run via `npx --package renovate@X.Y.Z` (no global install); the pin is bumped by Renovate. |
+| **GoReleaser** | Release builds & packaging | Release workflow uses a pinned `version:` (tar.gz, deb, rpm, snap), bumped by Renovate. |
 | **snapcraft** | Building the snap package | Only needed for the snap artifact in the release pipeline. |
+
+### Dependency automation (CI)
+
+| Tool | Purpose | Notes |
+|------|---------|-------|
+| **Renovate** (Mend-hosted GitHub App) | Keep dependencies up to date | Runs weekly via the Mend Renovate App installed on the repo — no token/secret or self-hosted workflow needed. Configured by [renovate.json5](renovate.json5). Manages the Go directive, Go modules, GitHub Actions (pinned to commit SHAs), and the golangci-lint/actionlint/checkmake/GoReleaser/renovate versions. |
+| **Dependabot** | Keep dependencies up to date | [.github/dependabot.yml](.github/dependabot.yml); kept in parallel with Renovate. Does not cover Vagrant boxes. |
+
+Neither tool can update the Vagrant box in
+[test/integration/Vagrantfile](test/integration/Vagrantfile) (the default,
+`debian/trixie64`, is the official Debian box on the HCP Vagrant Registry; no
+Renovate datasource exists for Vagrant boxes) or the apt/apk packages in
+[test/integration/provision.sh](test/integration/provision.sh) (installed
+without versions); bump those manually.
 
 ## Runtime dependencies
 

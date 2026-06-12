@@ -1,13 +1,25 @@
 # SPDX-License-Identifier: EUPL-1.2
 name: Integration
 
-# Expensive end-to-end backup/restore tests in a Vagrant VM. Manual only.
+# Expensive end-to-end backup/restore tests in a Vagrant VM. Run manually
+# (workflow_dispatch) or called by release.yml as a reusable workflow to gate a
+# release on the suite passing.
 on:
   workflow_dispatch:
     inputs:
       layouts:
         description: "Space-separated layout names to run (empty = all)"
         required: false
+        default: ""
+  # Callable from release.yml so a release is gated on this suite. The input is
+  # redeclared here because workflow_call inputs are separate from
+  # workflow_dispatch inputs; `${{ inputs.layouts }}` works for both.
+  workflow_call:
+    inputs:
+      layouts:
+        description: "Space-separated layout names to run (empty = all)"
+        required: false
+        type: string
         default: ""
 
 permissions:
@@ -22,7 +34,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: stable
+          go-version-file: go.mod
           cache: true
 
       # The binary is built on the host and shared into the VM (no Go in the VM).

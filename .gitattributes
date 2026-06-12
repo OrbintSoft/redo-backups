@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: EUPL-1.2
+#
+# Normalize all text files: store and check out with LF line endings,
+# and flag trailing whitespace / blank lines at EOF in diffs and patches.
+
+# Treat every file as text when Git auto-detects it as such, and force
+# LF (\n) line endings both in the repository and in the working tree.
+* text=auto eol=lf
+
+# Whitespace errors reported by `git diff --check` and `git apply`:
+#   blank-at-eol     trailing whitespace at the end of a line
+#   blank-at-eof     trailing blank lines at the end of a file
+#   space-before-tab a space appearing before a tab in the indent
+# (tabs as indentation are intentionally allowed: Go and Makefile use them).
+* whitespace=blank-at-eol,blank-at-eof,space-before-tab
