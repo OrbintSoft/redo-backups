@@ -5,6 +5,7 @@ package config
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -15,6 +16,17 @@ import (
 
 // profileNameRE restricts profile names to a safe, file-friendly set.
 var profileNameRE = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
+// Sentinel loading/parsing errors. Dynamic context (profile name, file, line) is
+// added by wrapping these with %w, keeping them matchable via errors.Is.
+var (
+	errInvalidProfileName = errors.New("config: invalid profile name")
+	errProfileNotFound    = errors.New("config: profile not found")
+	errProfileEmpty       = errors.New("config: profile has no configuration")
+	errMissingEquals      = errors.New("missing '=' in line")
+	errEmptyKey           = errors.New("empty key")
+	errUnknownKey         = errors.New("config: unknown key")
+)
 
 // Load reads the named profile from dir (typically DefaultDir), merging its
 // drop-in directory, and returns the resolved, validated configuration.
@@ -35,11 +47,14 @@ func listProfilesFS(fsys fs.FS) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("config: listing profiles: %w", err)
 	}
+
 	names := make([]string, 0, len(matches))
 	for _, m := range matches {
 		names = append(names, strings.TrimSuffix(m, ".conf"))
 	}
+
 	sort.Strings(names)
+
 	return names, nil
 }
 
@@ -47,48 +62,59 @@ func listProfilesFS(fsys fs.FS) ([]string, error) {
 // loader testable without touching the real /etc.
 func LoadFS(fsys fs.FS, profile string) (*Config, error) {
 	if !profileNameRE.MatchString(profile) {
-		return nil, fmt.Errorf("config: invalid profile name %q", profile)
+		return nil, fmt.Errorf("%w %q", errInvalidProfileName, profile)
 	}
 
 	base := profile + ".conf"
-	files := []string{base}
 
 	dropinGlob := profile + ".conf.d/*.conf"
+
 	dropins, err := fs.Glob(fsys, dropinGlob)
 	if err != nil {
 		return nil, fmt.Errorf("config: scanning drop-ins: %w", err)
 	}
+
 	sort.Strings(dropins)
+
+	files := make([]string, 0, 1+len(dropins))
+	files = append(files, base)
 	files = append(files, dropins...)
 
 	merged := map[string]string{}
 	loadedAny := false
+
 	for i, name := range files {
 		data, err := fs.ReadFile(fsys, name)
 		if err != nil {
 			// The base file is required; drop-ins are optional, but Glob only
 			// returns existing ones, so any read error there is real.
 			if i == 0 && errorIsNotExist(err) {
-				return nil, fmt.Errorf("config: profile %q not found (%s)", profile, name)
+				return nil, fmt.Errorf("%w: %q (%s)", errProfileNotFound, profile, name)
 			}
+
 			return nil, fmt.Errorf("config: reading %s: %w", name, err)
 		}
+
 		if err := parseInto(merged, data); err != nil {
 			return nil, fmt.Errorf("config: %s: %w", name, err)
 		}
+
 		loadedAny = true
 	}
+
 	if !loadedAny {
-		return nil, fmt.Errorf("config: profile %q has no configuration", profile)
+		return nil, fmt.Errorf("%w: %q", errProfileEmpty, profile)
 	}
 
 	cfg, err := fromMap(merged)
 	if err != nil {
 		return nil, err
 	}
+
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
+
 	return cfg, nil
 }
 
@@ -97,34 +123,45 @@ func LoadFS(fsys fs.FS, profile string) (*Config, error) {
 // are ignored. Values may be wrapped in matching single or double quotes.
 func parseInto(dst map[string]string, data []byte) error {
 	sc := bufio.NewScanner(bytes.NewReader(data))
+
 	line := 0
 	for sc.Scan() {
 		line++
+
 		raw := strings.TrimSpace(sc.Text())
 		if raw == "" || strings.HasPrefix(raw, "#") {
 			continue
 		}
-		eq := strings.IndexByte(raw, '=')
-		if eq < 0 {
-			return fmt.Errorf("line %d: missing '=' in %q", line, raw)
+
+		rawKey, rawVal, found := strings.Cut(raw, "=")
+		if !found {
+			return fmt.Errorf("%w %d: %q", errMissingEquals, line, raw)
 		}
-		key := strings.TrimSpace(raw[:eq])
+
+		key := strings.TrimSpace(rawKey)
 		if key == "" {
-			return fmt.Errorf("line %d: empty key", line)
+			return fmt.Errorf("%w on line %d", errEmptyKey, line)
 		}
-		val := unquote(strings.TrimSpace(raw[eq+1:]))
-		dst[key] = val
+
+		dst[key] = unquote(strings.TrimSpace(rawVal))
 	}
-	return sc.Err()
+
+	if err := sc.Err(); err != nil {
+		return fmt.Errorf("config: scanning: %w", err)
+	}
+
+	return nil
 }
 
 // unquote strips one layer of matching surrounding quotes.
 func unquote(s string) string {
-	if len(s) >= 2 {
+	const minQuoted = 2 // an opening and a closing quote
+	if len(s) >= minQuoted {
 		if (s[0] == '"' && s[len(s)-1] == '"') || (s[0] == '\'' && s[len(s)-1] == '\'') {
 			return s[1 : len(s)-1]
 		}
 	}
+
 	return s
 }
 
@@ -143,41 +180,50 @@ var knownKeys = map[string]bool{
 }
 
 // fromMap builds a Config from merged key/value pairs, starting from defaults.
-func fromMap(m map[string]string) (*Config, error) {
-	for k := range m {
+func fromMap(kv map[string]string) (*Config, error) {
+	for k := range kv {
 		if !knownKeys[k] {
-			return nil, fmt.Errorf("config: unknown key %q", k)
+			return nil, fmt.Errorf("%w %q", errUnknownKey, k)
 		}
 	}
 
 	cfg := defaults()
-	if v, ok := m["dest"]; ok {
+	if v, ok := kv["dest"]; ok {
 		cfg.Dest = v
 	}
-	if v, ok := m["drive"]; ok {
+
+	if v, ok := kv["drive"]; ok {
 		cfg.Drive = v
 	}
-	if v, ok := m["parts"]; ok {
+
+	if v, ok := kv["parts"]; ok {
 		cfg.Parts = ParseParts(v)
 	}
-	if v, ok := m["id"]; ok {
+
+	if v, ok := kv["id"]; ok {
 		cfg.ID = v
 	}
-	if v, ok := m["notes"]; ok {
+
+	if v, ok := kv["notes"]; ok {
 		cfg.Notes = v
 	}
-	if v, ok := m["version"]; ok {
+
+	if v, ok := kv["version"]; ok {
 		cfg.Version = v
 	}
-	if v, ok := m["compressor"]; ok {
+
+	if v, ok := kv["compressor"]; ok {
 		cfg.Compressor = Compressor(v)
 	}
-	if v, ok := m["split_size"]; ok {
+
+	if v, ok := kv["split_size"]; ok {
 		cfg.SplitSize = v
 	}
-	if v, ok := m["consistency"]; ok {
+
+	if v, ok := kv["consistency"]; ok {
 		cfg.Consistency = Consistency(v)
 	}
+
 	return cfg, nil
 }
 
@@ -187,12 +233,14 @@ func ParseParts(v string) []string {
 	if strings.TrimSpace(v) == auto {
 		return nil
 	}
+
 	fields := strings.FieldsFunc(v, func(r rune) bool {
 		return r == ',' || r == ' ' || r == '\t'
 	})
 	if len(fields) == 0 {
 		return nil
 	}
+
 	return fields
 }
 

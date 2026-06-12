@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: EUPL-1.2
-//
+
 // Package snapshot provides the live-consistency strategies a backup can use
 // when imaging mounted filesystems. A Strategy prepares a partition for imaging
 // (for example by freezing it or creating a snapshot) and returns the device to
@@ -9,11 +9,16 @@ package snapshot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/OrbintSoft/redo-backups/internal/config"
 	"github.com/OrbintSoft/redo-backups/internal/run"
 )
+
+// errUnknownStrategy is returned for an unrecognized consistency setting. The
+// offending value is added by wrapping it with %w.
+var errUnknownStrategy = errors.New("snapshot: unknown strategy")
 
 // Target describes the partition to be imaged.
 type Target struct {
@@ -49,6 +54,8 @@ type Strategy interface {
 
 // For returns the Strategy selected by cfg.Consistency, using r to run any
 // required commands.
+//
+//nolint:ireturn // a factory necessarily returns the Strategy interface it selects at runtime.
 func For(cfg *config.Config, r run.Runner) (Strategy, error) {
 	switch cfg.Consistency {
 	case config.ConsistencyNone:
@@ -58,7 +65,7 @@ func For(cfg *config.Config, r run.Runner) (Strategy, error) {
 	case config.ConsistencyLVM:
 		return &LVM{Runner: r}, nil
 	default:
-		return nil, fmt.Errorf("snapshot: unknown strategy %q", cfg.Consistency)
+		return nil, fmt.Errorf("%w %q", errUnknownStrategy, cfg.Consistency)
 	}
 }
 

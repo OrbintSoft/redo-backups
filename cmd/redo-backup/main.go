@@ -21,6 +21,13 @@ import (
 // on-disk format version). Overridable at build time via -ldflags.
 var version = "0.0.0-dev"
 
+// Process exit codes returned by the CLI sub-commands.
+const (
+	exitOK      = 0
+	exitFailure = 1
+	exitUsage   = 2
+)
+
 const usage = `redo-backup - create Redo Rescue-compatible backups
 
 Usage:
@@ -47,7 +54,8 @@ func main() {
 func dispatch(args []string, stdout, stderr *os.File) int {
 	if len(args) == 0 {
 		fmt.Fprint(stderr, usage)
-		return 2
+
+		return exitUsage
 	}
 
 	switch cmd := args[0]; cmd {
@@ -59,15 +67,69 @@ func dispatch(args []string, stdout, stderr *os.File) int {
 		return cmdShow(args[1:], stdout, stderr)
 	case "version", "--version", "-v":
 		fmt.Fprintln(stdout, version)
-		return 0
+
+		return exitOK
 	case "help", "--help", "-h":
 		fmt.Fprint(stdout, usage)
-		return 0
+
+		return exitOK
 	default:
 		fmt.Fprintf(stderr, "error: unknown command %q\n", cmd)
 		fmt.Fprint(stderr, usage)
-		return 2
+
+		return exitUsage
 	}
+}
+
+// runOverrides holds the optional per-setting override flags for "run". A flag's
+// value is applied to the loaded config only if it was explicitly passed.
+type runOverrides struct {
+	dest        *string
+	drive       *string
+	parts       *string
+	id          *string
+	notes       *string
+	compressor  *string
+	split       *string
+	consistency *string
+}
+
+// registerOverrides declares the override flags on fs and returns their holder.
+func registerOverrides(fs *flag.FlagSet) runOverrides {
+	return runOverrides{
+		dest:        fs.String("dest", "", "override: destination directory"),
+		drive:       fs.String("drive", "", "override: target drive (or 'auto')"),
+		parts:       fs.String("parts", "", "override: partitions (comma/space list, or 'auto')"),
+		id:          fs.String("id", "", "override: backup id"),
+		notes:       fs.String("notes", "", "override: notes"),
+		compressor:  fs.String("compressor", "", "override: pigz|gzip"),
+		split:       fs.String("split-size", "", "override: chunk size (e.g. 4096M)"),
+		consistency: fs.String("consistency", "", "override: consistency strategy"),
+	}
+}
+
+// applyTo copies into cfg only the overrides whose flag was explicitly set.
+func (o runOverrides) applyTo(fs *flag.FlagSet, cfg *config.Config) {
+	fs.Visit(func(fl *flag.Flag) {
+		switch fl.Name {
+		case "dest":
+			cfg.Dest = *o.dest
+		case "drive":
+			cfg.Drive = *o.drive
+		case "parts":
+			cfg.Parts = config.ParseParts(*o.parts)
+		case "id":
+			cfg.ID = *o.id
+		case "notes":
+			cfg.Notes = *o.notes
+		case "compressor":
+			cfg.Compressor = config.Compressor(*o.compressor)
+		case "split-size":
+			cfg.SplitSize = *o.split
+		case "consistency":
+			cfg.Consistency = config.Consistency(*o.consistency)
+		}
+	})
 }
 
 // cmdRun loads the named profile and executes the backup it describes.
@@ -76,77 +138,60 @@ func cmdRun(args []string, stdout, stderr *os.File) int {
 	fs.SetOutput(stderr)
 	dir := fs.String("config-dir", config.DefaultDir, "profile directory")
 	dryRun := fs.Bool("dry-run", false, "validate and print the plan without touching disks")
-	// Per-setting overrides; applied only when explicitly passed.
-	oDest := fs.String("dest", "", "override: destination directory")
-	oDrive := fs.String("drive", "", "override: target drive (or 'auto')")
-	oParts := fs.String("parts", "", "override: partitions (comma/space list, or 'auto')")
-	oID := fs.String("id", "", "override: backup id")
-	oNotes := fs.String("notes", "", "override: notes")
-	oCompressor := fs.String("compressor", "", "override: pigz|gzip")
-	oSplit := fs.String("split-size", "", "override: chunk size (e.g. 4096M)")
-	oConsistency := fs.String("consistency", "", "override: consistency strategy")
+	overrides := registerOverrides(fs)
+
 	if err := fs.Parse(args); err != nil {
-		return 2
+		return exitUsage
 	}
+
 	if fs.NArg() != 1 {
 		fmt.Fprintln(stderr, "error: 'run' requires exactly one argument: <profile>")
-		return 2
+
+		return exitUsage
 	}
 
 	cfg, err := config.Load(*dir, fs.Arg(0))
 	if err != nil {
 		fmt.Fprintln(stderr, "error:", err)
-		return 1
+
+		return exitFailure
 	}
 
-	// Apply only the overrides whose flags were explicitly provided.
-	fs.Visit(func(fl *flag.Flag) {
-		switch fl.Name {
-		case "dest":
-			cfg.Dest = *oDest
-		case "drive":
-			cfg.Drive = *oDrive
-		case "parts":
-			cfg.Parts = config.ParseParts(*oParts)
-		case "id":
-			cfg.ID = *oID
-		case "notes":
-			cfg.Notes = *oNotes
-		case "compressor":
-			cfg.Compressor = config.Compressor(*oCompressor)
-		case "split-size":
-			cfg.SplitSize = *oSplit
-		case "consistency":
-			cfg.Consistency = config.Consistency(*oConsistency)
-		}
-	})
+	overrides.applyTo(fs, cfg)
+
 	if err := cfg.Validate(); err != nil {
 		fmt.Fprintln(stderr, "error:", err)
-		return 1
+
+		return exitFailure
 	}
 
 	runner := run.ExecRunner{}
-	b := &backup.Backup{Runner: runner, Inspector: disk.New(runner)}
+	b := &backup.Backup{Runner: runner, Inspector: disk.New(runner), Clock: nil, LogDir: ""}
 
 	if *dryRun {
 		plan, err := b.Plan(context.Background(), cfg)
 		if err != nil {
 			fmt.Fprintln(stderr, "error:", err)
-			return 1
+
+			return exitFailure
 		}
+
 		printPlan(stdout, plan)
-		return 0
+
+		return exitOK
 	}
 
 	report, err := b.Run(context.Background(), cfg)
 	if err != nil {
 		fmt.Fprintln(stderr, "error:", err)
-		return 1
+
+		return exitFailure
 	}
 
 	fmt.Fprintf(stdout, "Backup %s complete on drive %s: wrote %s (%d partition(s): %v)\n",
 		report.ID, report.Drive, report.DescriptorPath, len(report.Partitions), report.Partitions)
-	return 0
+
+	return exitOK
 }
 
 // printPlan writes a human-readable preview of a backup run (the --dry-run view).
@@ -157,6 +202,7 @@ func printPlan(w *os.File, plan *backup.Plan) {
 	fmt.Fprintf(w, "descriptor:   %s\n", plan.DescriptorPath)
 	fmt.Fprintf(w, "consistency:  %s\n", plan.Consistency)
 	fmt.Fprintf(w, "partitions:   %d\n", len(plan.Partitions))
+
 	for _, p := range plan.Partitions {
 		fmt.Fprintf(w, "\n[%s] %s\n", p.Name, p.Source)
 		fmt.Fprintf(w, "  %s\n", strings.Join(p.Commands, " \\\n    | "))
@@ -167,46 +213,58 @@ func printPlan(w *os.File, plan *backup.Plan) {
 func cmdList(args []string, stdout, stderr *os.File) int {
 	fs := flag.NewFlagSet("list", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+
 	dir := fs.String("config-dir", config.DefaultDir, "profile directory")
 	if err := fs.Parse(args); err != nil {
-		return 2
+		return exitUsage
 	}
 
 	names, err := config.ListProfiles(*dir)
 	if err != nil {
 		fmt.Fprintln(stderr, "error:", err)
-		return 1
+
+		return exitFailure
 	}
+
 	if len(names) == 0 {
 		fmt.Fprintf(stderr, "no profiles found in %s\n", *dir)
-		return 0
+
+		return exitOK
 	}
+
 	for _, n := range names {
 		fmt.Fprintln(stdout, n)
 	}
-	return 0
+
+	return exitOK
 }
 
 // cmdShow prints a profile's fully-resolved configuration.
 func cmdShow(args []string, stdout, stderr *os.File) int {
 	fs := flag.NewFlagSet("show", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+
 	dir := fs.String("config-dir", config.DefaultDir, "profile directory")
 	if err := fs.Parse(args); err != nil {
-		return 2
+		return exitUsage
 	}
+
 	if fs.NArg() != 1 {
 		fmt.Fprintln(stderr, "error: 'show' requires exactly one argument: <profile>")
-		return 2
+
+		return exitUsage
 	}
 
 	cfg, err := config.Load(*dir, fs.Arg(0))
 	if err != nil {
 		fmt.Fprintln(stderr, "error:", err)
-		return 1
+
+		return exitFailure
 	}
+
 	printConfig(stdout, cfg)
-	return 0
+
+	return exitOK
 }
 
 // printConfig writes a profile's resolved settings in a readable key: value form.
@@ -215,10 +273,12 @@ func printConfig(w *os.File, cfg *config.Config) {
 	if !cfg.PartsAuto() {
 		parts = strings.Join(cfg.Parts, ", ")
 	}
+
 	id := cfg.ID
 	if id == "" {
 		id = "(derived from date)"
 	}
+
 	fmt.Fprintf(w, "dest:         %s\n", cfg.Dest)
 	fmt.Fprintf(w, "drive:        %s\n", cfg.Drive)
 	fmt.Fprintf(w, "parts:        %s\n", parts)

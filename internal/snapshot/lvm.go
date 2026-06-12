@@ -37,21 +37,27 @@ func (s *LVM) Prepare(ctx context.Context, t Target) (Prepared, error) {
 	}
 
 	var frozen []string
+
 	thaw := func() error {
 		var firstErr error
+
 		for _, mp := range frozen {
-			if _, err := s.Runner.Run(ctx, run.Command{Name: "fsfreeze", Args: []string{"-u", mp}}); err != nil && firstErr == nil {
+			_, err := s.Runner.Run(ctx, run.Command{Name: cmdFsfreeze, Args: []string{"-u", mp}})
+			if err != nil && firstErr == nil {
 				firstErr = fmt.Errorf("snapshot: thawing %s: %w", mp, err)
 			}
 		}
+
 		return firstErr
 	}
 
 	for _, mp := range mounts {
-		if _, err := s.Runner.Run(ctx, run.Command{Name: "fsfreeze", Args: []string{"-f", mp}}); err != nil {
+		if _, err := s.Runner.Run(ctx, run.Command{Name: cmdFsfreeze, Args: []string{"-f", mp}}); err != nil {
 			_ = thaw()
+
 			return Prepared{}, fmt.Errorf("snapshot: freezing %s: %w", mp, err)
 		}
+
 		frozen = append(frozen, mp)
 	}
 
@@ -75,17 +81,22 @@ func (s *LVM) subtreeMounts(ctx context.Context, dev string) ([]string, error) {
 		return nil, fmt.Errorf("snapshot: parsing lsblk for %s: %w", dev, err)
 	}
 
-	var mounts []string
-	var walk func(nodes []lvmNode)
+	var (
+		mounts []string
+		walk   func(nodes []lvmNode)
+	)
+
 	walk = func(nodes []lvmNode) {
 		for _, n := range nodes {
 			if n.Mountpoint != "" {
 				mounts = append(mounts, n.Mountpoint)
 			}
+
 			walk(n.Children)
 		}
 	}
 	walk(out.BlockDevices)
+
 	return mounts, nil
 }
 

@@ -40,8 +40,13 @@ PV, brings the VG back, and verifies the LVs. It is skipped automatically if
   (libvirt or VirtualBox), and `make` + Go to build the binary.
 - Inside the **VM** (installed by [provision.sh](provision.sh)): `partclone`,
   `pigz`, `util-linux`, `lvm2`, `python3`, and the `mkfs.*` tools
-  (`e2fsprogs`, `dosfstools`, `xfsprogs`, `btrfs-progs`). A lightweight Alpine
-  box is used by default (override with `REDO_ITEST_BOX`).
+  (`e2fsprogs`, `dosfstools`, `xfsprogs`, `btrfs-progs`). The official Debian box
+  (`debian/trixie64`) is used by default; override with `REDO_ITEST_BOX`
+  (`provision.sh` handles both apk- and apt-based distributions).
+
+  Note: the suite drives the imaging/restore pipeline with `gzip` rather than the
+  `pigz` production default, because `pigz` was unusable on the old Alpine box;
+  `pigz` is installed but not exercised here. The `.img` format is identical.
 
 ## Usage
 
@@ -66,7 +71,9 @@ Equivalent raw commands:
 make build                       # produces bin/redo-backup (uploaded into the VM)
 cd test/integration
 vagrant up                       # boots, provisions, and uploads the harness
-vagrant ssh -c 'sudo /opt/itest/run-tests.sh'
+# REDO_BACKUP_BIN must point at the uploaded binary; sudo does not inherit it
+# from /etc/profile.d, so pass it explicitly (this is what the Makefile does):
+vagrant ssh -c 'sudo REDO_BACKUP_BIN=/opt/itest/redo-backup /opt/itest/run-tests.sh'
 vagrant destroy -f               # tear down
 ```
 

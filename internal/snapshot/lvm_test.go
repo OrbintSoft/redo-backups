@@ -17,6 +17,8 @@ const lsblkPV = `{"blockdevices":[{"name":"sda2","mountpoint":null,"children":[
 ]}]}`
 
 func TestLVMFreezesSubtree(t *testing.T) {
+	t.Parallel()
+
 	r := run.NewFakeRunner()
 	r.AddStdout("lsblk -J -o NAME,MOUNTPOINT /dev/sda2", lsblkPV)
 	s := &LVM{Runner: r}
@@ -25,9 +27,11 @@ func TestLVMFreezesSubtree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Prepare: %v", err)
 	}
+
 	if p.Source != "/dev/sda2" {
 		t.Errorf("Source = %q, want /dev/sda2 (the PV partition, imaged raw)", p.Source)
 	}
+
 	if err := p.Release(); err != nil {
 		t.Errorf("Release: %v", err)
 	}
@@ -39,10 +43,12 @@ func TestLVMFreezesSubtree(t *testing.T) {
 		"fsfreeze -u /",
 		"fsfreeze -u /home",
 	}
+
 	got := r.CommandLines()
 	if len(got) != len(want) {
 		t.Fatalf("commands = %v, want %v", got, want)
 	}
+
 	for i := range want {
 		if got[i] != want[i] {
 			t.Errorf("command[%d] = %q, want %q", i, got[i], want[i])
@@ -51,6 +57,8 @@ func TestLVMFreezesSubtree(t *testing.T) {
 }
 
 func TestLVMNoMounts(t *testing.T) {
+	t.Parallel()
+
 	r := run.NewFakeRunner()
 	r.AddStdout("lsblk -J -o NAME,MOUNTPOINT /dev/sda2",
 		`{"blockdevices":[{"name":"sda2","mountpoint":null,"children":[{"name":"vg0-swap","mountpoint":null}]}]}`)
@@ -60,6 +68,7 @@ func TestLVMNoMounts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Prepare: %v", err)
 	}
+
 	if err := p.Release(); err != nil {
 		t.Errorf("Release: %v", err)
 	}
@@ -70,16 +79,19 @@ func TestLVMNoMounts(t *testing.T) {
 }
 
 func TestLVMLsblkError(t *testing.T) {
+	t.Parallel()
+
 	r := run.NewFakeRunner()
 	r.Responses["lsblk -J -o NAME,MOUNTPOINT /dev/sda2"] = run.FakeResponse{Err: errBoomLVM}
+
 	s := &LVM{Runner: r}
 	if _, err := s.Prepare(context.Background(), Target{Device: "sda2"}); err == nil {
 		t.Fatal("expected error when lsblk fails")
 	}
 }
 
-type boomLVM struct{}
+type boomLVMError struct{}
 
-func (boomLVM) Error() string { return "boom" }
+func (boomLVMError) Error() string { return "boom" }
 
-var errBoomLVM = boomLVM{}
+var errBoomLVM = boomLVMError{}

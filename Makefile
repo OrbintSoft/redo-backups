@@ -34,6 +34,18 @@ LDFLAGS := -X main.version=$(VERSION)
 # golangci-lint is invoked from PATH or, if absent there, from $(go env GOPATH)/bin.
 GOLANGCI_LINT ?= $(shell command -v golangci-lint 2>/dev/null || echo "$(shell $(GO) env GOPATH)/bin/golangci-lint")
 
+# actionlint (GitHub Actions workflow linter), resolved the same way.
+ACTIONLINT ?= $(shell command -v actionlint 2>/dev/null || echo "$(shell $(GO) env GOPATH)/bin/actionlint")
+
+# checkmake (Makefile linter), resolved the same way. Configured by checkmake.ini.
+CHECKMAKE ?= $(shell command -v checkmake 2>/dev/null || echo "$(shell $(GO) env GOPATH)/bin/checkmake")
+
+# renovate-config-validator ships in the npm `renovate` package; run via npx so
+# no global install is needed. The version is pinned (and bumped by Renovate,
+# in sync with the CI pin) so the schema matches; override RENOVATE_VALIDATE to
+# change it. An unpinned `renovate` can resolve to a stale npx cache.
+RENOVATE_VALIDATE ?= npx --yes --package renovate@43.220.0 -- renovate-config-validator --strict
+
 # Integration tests (Vagrant). VAGRANT can be set to e.g. "sudo vagrant" when the
 # provider needs root; LAYOUTS restricts which disk layouts run (empty = all).
 ITEST_DIR := test/integration
@@ -44,8 +56,12 @@ ITEST_RUN := sudo REDO_BACKUP_BIN=/opt/itest/redo-backup LAYOUTS='$(LAYOUTS)' /o
 .DEFAULT_GOAL := build
 
 # --- Phony targets ----------------------------------------------------------
-.PHONY: all build test race vet fmt fmt-check lint clean install uninstall \
-        integration integration-up integration-run integration-destroy help
+# checkmake only parses the first physical line of a .PHONY declaration, and its
+# minphony/phonydeclared rules require all, clean, test, and the body-less
+# `integration` aggregator to be declared PHONY — so those four are kept on the
+# first line below; the remaining targets may wrap onto the continuation line.
+.PHONY: all integration clean test build race vet fmt fmt-check lint actionlint checkmake \
+        leakcheck renovate-validate install uninstall integration-up integration-run integration-destroy help
 
 all: build ## Build everything (default)
 
@@ -58,20 +74,33 @@ test: ## Run the unit tests
 race: ## Run the unit tests with the race detector
 	$(GO) test -race ./...
 
+# Go 1.26's experimental goroutine leak profile. The per-package TestMain in
+# internal/leakcheck fails the run if any goroutine is left blocked on an
+# unreachable concurrency primitive. The GOEXPERIMENT is what arms it; drop it
+# once the profile is on by default (planned for Go 1.27).
+leakcheck: ## Run the unit tests under the Go 1.26 goroutine leak detector
+	GOEXPERIMENT=goroutineleakprofile $(GO) test ./...
+
 vet: ## Run go vet
 	$(GO) vet ./...
 
-fmt: ## Format the source with gofmt
-	gofmt -w .
+fmt: ## Format the source with gofumpt (via golangci-lint)
+	$(GOLANGCI_LINT) fmt
 
-fmt-check: ## Fail if any file is not gofmt-formatted
-	@unformatted=$$(gofmt -l .); \
-	if [ -n "$$unformatted" ]; then \
-		echo "These files are not gofmt-formatted:"; echo "$$unformatted"; exit 1; \
-	fi
+fmt-check: ## Fail if any file is not gofumpt-formatted
+	$(GOLANGCI_LINT) fmt --diff
 
 lint: ## Run golangci-lint
 	$(GOLANGCI_LINT) run ./...
+
+actionlint: ## Lint the GitHub Actions workflows
+	$(ACTIONLINT)
+
+checkmake: ## Lint the Makefile
+	$(CHECKMAKE) Makefile
+
+renovate-validate: ## Validate renovate.json5 against the Renovate schema
+	$(RENOVATE_VALIDATE)
 
 clean: ## Remove build artifacts
 	rm -rf $(BUILDDIR)

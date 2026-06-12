@@ -12,7 +12,10 @@ import (
 // TestRunPipeline runs a real 3-stage pipeline (printf | cat | dd of=file) and
 // checks the bytes that reach the final stage.
 func TestRunPipeline(t *testing.T) {
+	t.Parallel()
+
 	out := filepath.Join(t.TempDir(), "out.bin")
+
 	err := ExecRunner{}.RunPipeline(context.Background(), []Command{
 		{Name: "printf", Args: []string{"hello-pipeline"}},
 		{Name: "cat"},
@@ -21,10 +24,12 @@ func TestRunPipeline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunPipeline: %v", err)
 	}
+
 	got, err := os.ReadFile(out)
 	if err != nil {
 		t.Fatalf("read output: %v", err)
 	}
+
 	if string(got) != "hello-pipeline" {
 		t.Errorf("pipeline output = %q, want %q", got, "hello-pipeline")
 	}
@@ -32,7 +37,10 @@ func TestRunPipeline(t *testing.T) {
 
 // TestRunPipelineStdin feeds Stdin into the first stage.
 func TestRunPipelineStdin(t *testing.T) {
+	t.Parallel()
+
 	out := filepath.Join(t.TempDir(), "out.bin")
+
 	err := ExecRunner{}.RunPipeline(context.Background(), []Command{
 		{Name: "cat", Stdin: []byte("from-stdin")},
 		{Name: "dd", Args: []string{"of=" + out, "status=none"}},
@@ -40,6 +48,7 @@ func TestRunPipelineStdin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunPipeline: %v", err)
 	}
+
 	got, _ := os.ReadFile(out)
 	if string(got) != "from-stdin" {
 		t.Errorf("got %q", got)
@@ -48,6 +57,8 @@ func TestRunPipelineStdin(t *testing.T) {
 
 // TestRunPipelineError reports an error when a stage fails.
 func TestRunPipelineError(t *testing.T) {
+	t.Parallel()
+
 	err := ExecRunner{}.RunPipeline(context.Background(), []Command{
 		{Name: "false"},
 	})
@@ -58,6 +69,8 @@ func TestRunPipelineError(t *testing.T) {
 
 // TestRunPipelineMissingBinary reports an error when a stage cannot start.
 func TestRunPipelineMissingBinary(t *testing.T) {
+	t.Parallel()
+
 	err := ExecRunner{}.RunPipeline(context.Background(), []Command{
 		{Name: "this-binary-does-not-exist-xyz"},
 	})

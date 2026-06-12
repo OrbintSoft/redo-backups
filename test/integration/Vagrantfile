@@ -14,20 +14,23 @@
 # pushed in with the file provisioner (scp) instead of a shared folder, so the
 # guest needs no rsync/NFS/9p.
 #
-# A lightweight Alpine box is used by default; override with REDO_ITEST_BOX
-# (provision.sh handles both apk- and apt-based distributions).
+# The default box is the official Debian box (maintained by the Debian Cloud
+# team and published on the HCP Vagrant Registry); recent builds ship a libvirt
+# image only, which is what CI uses. Override with REDO_ITEST_BOX for another
+# distribution or a VirtualBox-capable box (provision.sh handles both apk- and
+# apt-based distributions).
 #
 # Usage (needs a virtualization provider such as libvirt or VirtualBox):
 #   make build                 # on the host, produces bin/redo-backup
 #   cd test/integration
 #   vagrant up
-#   vagrant ssh -c 'sudo /opt/itest/run-tests.sh'
+#   vagrant ssh -c 'sudo REDO_BACKUP_BIN=/opt/itest/redo-backup /opt/itest/run-tests.sh'
 #   vagrant destroy -f
 
 ITEST_DIR = "/opt/itest".freeze
 
 Vagrant.configure("2") do |config|
-  config.vm.box = ENV.fetch("REDO_ITEST_BOX", "generic/alpine319")
+  config.vm.box = ENV.fetch("REDO_ITEST_BOX", "debian/trixie64")
   config.vm.hostname = "redo-itest"
 
   # No shared folder: the default would require rsync/NFS/9p in the guest. We

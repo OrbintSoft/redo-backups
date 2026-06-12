@@ -3,6 +3,7 @@
 package backup
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,19 @@ import (
 	"github.com/OrbintSoft/redo-backups/internal/disk"
 	"github.com/OrbintSoft/redo-backups/internal/redo"
 )
+
+// Sentinel backup errors. Dynamic context (partition / drive names) is added by
+// wrapping these with %w, keeping them matchable with errors.Is.
+var (
+	errPartitionNotOnDrive = errors.New("backup: requested partition not on drive")
+	errNoPartitions        = errors.New("backup: no partitions to back up on drive")
+)
+
+// descriptorPerm restricts the ".redo" descriptor to its owner. The descriptor
+// (MBR, partition table, partition metadata) is part of a backup and may be
+// sensitive; it is written and read back only by the root-run tool, so
+// owner-only permissions are sufficient and safer than world-readable.
+const descriptorPerm os.FileMode = 0o600
 
 // FormatTimestamp renders t the way Redo Rescue stores it (RFC 2822, matching
 // PHP's date('r')), e.g. "Mon, 05 Jan 2026 18:15:11 +0000".
@@ -31,31 +45,42 @@ func SelectPartitions(cfg *config.Config, drive *disk.Drive) ([]disk.Partition, 
 	if cfg.PartsAuto() {
 		return drive.Partitions, nil
 	}
+
 	want := make(map[string]bool, len(cfg.Parts))
 	for _, p := range cfg.Parts {
 		want[p] = true
 	}
+
 	var selected []disk.Partition
+
 	for _, p := range drive.Partitions {
 		if want[p.Name] {
 			selected = append(selected, p)
 			delete(want, p.Name)
 		}
 	}
+
 	if len(want) > 0 {
 		for _, name := range cfg.Parts {
 			if want[name] {
-				return nil, fmt.Errorf("backup: partition %q is not on drive %q", name, drive.Name)
+				return nil, fmt.Errorf("%w: %q (drive %q)", errPartitionNotOnDrive, name, drive.Name)
 			}
 		}
 	}
+
 	return selected, nil
 }
 
 // BuildImage assembles the ".redo" descriptor from the gathered facts. The
 // caller supplies id, timestamp, MBR and partition-table bytes (so this stays
 // pure and testable); parts is the already-selected partition set.
-func BuildImage(cfg *config.Config, drive *disk.Drive, parts []disk.Partition, id, timestamp string, mbr, sfd []byte) *redo.Image {
+func BuildImage(
+	cfg *config.Config,
+	drive *disk.Drive,
+	parts []disk.Partition,
+	id, timestamp string,
+	mbr, sfd []byte,
+) *redo.Image {
 	p := redo.NewParts()
 	for _, part := range parts {
 		p.Set(part.Name, redo.Part{
@@ -66,6 +91,7 @@ func BuildImage(cfg *config.Config, drive *disk.Drive, parts []disk.Partition, i
 			Desc:  part.Label,
 		})
 	}
+
 	return &redo.Image{
 		ID:         id,
 		Version:    cfg.Version,
@@ -85,9 +111,11 @@ func WriteDescriptor(dir string, img *redo.Image) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("backup: marshaling descriptor: %w", err)
 	}
+
 	path := filepath.Join(dir, img.ID+".redo")
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := os.WriteFile(path, data, descriptorPerm); err != nil {
 		return "", fmt.Errorf("backup: writing %s: %w", path, err)
 	}
+
 	return path, nil
 }

@@ -268,9 +268,10 @@ EOF
 	log "  restore (raw PV) onto /dev/$base"
 	"$here/restore.sh" "$dest/$name.redo" "$base"
 	partprobe "$loop" 2>/dev/null || true
-	pvscan --cache >/dev/null 2>&1 || true
-	vgchange -ay "$vg" >/dev/null 2>&1 || true
-	vgmknodes "$vg" >/dev/null 2>&1 || true
+	# The PV partition node must reappear after partprobe before LVM can scan it
+	# (loop devices emit no udev events), then bring the VG and its LVs back.
+	wait_for_block "$pv" "$loop"
+	activate_vg "$vg" "${lvs[@]}"
 
 	# Verify each LV: files back, marker gone.
 	local ok=1 marker_present

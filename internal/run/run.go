@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: EUPL-1.2
-//
+
 // Package run is the single seam through which the rest of the program executes
 // external commands (lsblk, sfdisk, dd, partclone, pigz, split, ...). Keeping
 // all process execution behind the Runner interface lets the disk/backup logic
@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"strings"
 )
 
 // Command describes a single external command invocation.
@@ -30,6 +31,7 @@ func (c Command) String() string {
 	if len(c.Args) == 0 {
 		return c.Name
 	}
+
 	return c.Name + " " + join(c.Args)
 }
 
@@ -57,18 +59,25 @@ type ExecRunner struct{}
 
 // Run implements Runner using the real operating system.
 func (ExecRunner) Run(ctx context.Context, cmd Command) (Result, error) {
+	// #nosec G204 -- running external imaging tools (partclone, dd, gzip, split,
+	// lsblk, ...) is this package's whole purpose. Command names are fixed in code
+	// and the only interpolated arguments are device names already validated
+	// against a strict allow-list; no shell is involved.
 	c := exec.CommandContext(ctx, cmd.Name, cmd.Args...)
 	if cmd.Stdin != nil {
 		c.Stdin = bytes.NewReader(cmd.Stdin)
 	}
+
 	var stdout, stderr bytes.Buffer
+
 	c.Stdout = &stdout
 	c.Stderr = &stderr
 
 	err := c.Run()
 	res := Result{
-		Stdout: stdout.Bytes(),
-		Stderr: stderr.Bytes(),
+		Stdout:   stdout.Bytes(),
+		Stderr:   stderr.Bytes(),
+		ExitCode: 0,
 	}
 	// ProcessState is nil only if the process never started (e.g. executable
 	// not found); in that case there is no meaningful exit code.
@@ -77,19 +86,14 @@ func (ExecRunner) Run(ctx context.Context, cmd Command) (Result, error) {
 	} else {
 		res.ExitCode = -1
 	}
+
 	if err != nil {
 		return res, fmt.Errorf("run %q: %w", cmd.String(), err)
 	}
+
 	return res, nil
 }
 
 func join(args []string) string {
-	out := ""
-	for i, a := range args {
-		if i > 0 {
-			out += " "
-		}
-		out += a
-	}
-	return out
+	return strings.Join(args, " ")
 }

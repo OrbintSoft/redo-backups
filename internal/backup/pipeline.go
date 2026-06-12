@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: EUPL-1.2
-//
+
 // Package backup orchestrates a Redo Rescue-compatible backup: it builds the
 // per-partition imaging pipelines and the ".redo" descriptor. Command execution
 // lives behind run.Runner; this file only constructs the commands as typed data
@@ -32,6 +32,7 @@ func partcloneStage(tool, sourceDevice, logfile string) run.Command {
 	if tool != disk.DDTool {
 		args = append(args, "--clone")
 	}
+
 	args = append(args,
 		"--force",
 		"--UI-fresh", "1",
@@ -39,6 +40,7 @@ func partcloneStage(tool, sourceDevice, logfile string) run.Command {
 		"--source", sourceDevice,
 		"--no_block_detail",
 	)
+
 	return run.Command{Name: "partclone." + tool, Args: args}
 }
 
@@ -52,6 +54,7 @@ func compressorStage(compressor string) run.Command {
 // fixed-size ".img" chunks named "<id>_<dev>_NNN.img".
 func splitStage(splitSize, outDir, id, dev string) run.Command {
 	prefix := filepath.Join(outDir, id+"_"+dev+"_")
+
 	return run.Command{Name: "split", Args: []string{
 		"--numeric-suffixes=1",
 		"--suffix-length=3",
@@ -68,6 +71,7 @@ func splitStage(splitSize, outDir, id, dev string) run.Command {
 // always named after the original partition (part.Name).
 func PartitionPipeline(part disk.Partition, sourceDevice, compressor, splitSize, logfile, outDir, id string) Pipeline {
 	tool := disk.FSTool(part.FS)
+
 	return Pipeline{
 		Dev: part.Name,
 		Stages: []run.Command{

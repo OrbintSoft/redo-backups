@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: EUPL-1.2
-//
+
 // Package redo models the Redo Rescue ".redo" backup descriptor and produces it
 // in a form the stock Redo Rescue live CD can restore. See docs/redo-format.md
 // for the on-disk format this mirrors.
@@ -73,6 +73,7 @@ func Parse(data []byte) (*Image, error) {
 	if err := json.Unmarshal(data, &img); err != nil {
 		return nil, fmt.Errorf("redo: parse: %w", err)
 	}
+
 	return &img, nil
 }
 
@@ -80,10 +81,13 @@ func Parse(data []byte) (*Image, error) {
 // trailing newline.
 func marshalCompact(v any) ([]byte, error) {
 	var buf bytes.Buffer
+
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
+
 	if err := enc.Encode(v); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("redo: encoding json: %w", err)
 	}
+
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }

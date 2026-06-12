@@ -1,0 +1,103 @@
+// SPDX-License-Identifier: EUPL-1.2
+//
+// Renovate configuration. Renovate keeps dependencies up to date by opening pull
+// requests. It is run by the Mend-hosted Renovate GitHub App (installed on the
+// repository), so no token/secret and no self-hosted workflow are needed: the App
+// authenticates as a GitHub App installation, which can update workflow files and
+// whose PRs trigger CI. Cadence is weekly (schedule:weekly).
+//
+// What it manages:
+//   - The Go toolchain: the `go` directive in go.mod (the CI workflows read it via
+//     `go-version-file: go.mod`, so bumping go.mod bumps CI too).
+//   - Any third-party Go module (currently none; stdlib only).
+//   - Every GitHub Action, pinned to a full-length commit SHA (helpers preset).
+//   - The golangci-lint, actionlint, checkmake, GoReleaser, and renovate
+//     (renovate-config-validator) versions used by the workflows (custom
+//     managers below).
+//
+// What it does NOT manage (left manual, on purpose):
+//   - The Vagrant box in test/integration/Vagrantfile (no Renovate datasource for
+//     Vagrant boxes) and the apt/apk packages in test/integration/provision.sh
+//     (installed without versions). See DEPENDENCIES.md.
+//
+// Dependabot is kept in parallel (.github/dependabot.yml); expect occasional
+// duplicate PRs on Go modules / Actions until one of the two is retired.
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  extends: [
+    "config:recommended",
+    // Run once a week rather than continuously.
+    "schedule:weekly",
+    // Pin every GitHub Action to a commit SHA, keeping a readable `# vX` comment.
+    "helpers:pinGitHubActionDigests",
+  ],
+
+  labels: ["dependencies", "renovate"],
+  semanticCommits: "enabled",
+
+  // Keep go.mod tidy after a module/go-directive change.
+  postUpdateOptions: ["gomodTidy"],
+
+  packageRules: [
+    {
+      // The `go install` path below is pinned to the /v2 module major, so only
+      // track v2 tags; the path must be bumped by hand when golangci-lint v3 lands.
+      matchDepNames: ["golangci/golangci-lint"],
+      allowedVersions: "<3.0.0",
+    },
+  ],
+
+  customManagers: [
+    {
+      customType: "regex",
+      description: "golangci-lint version installed via `go install` in the workflows",
+      managerFilePatterns: ["/^\\.github/workflows/.+\\.ya?ml$/"],
+      matchStrings: [
+        "go install github\\.com/golangci/golangci-lint/v2/cmd/golangci-lint@(?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)",
+      ],
+      datasourceTemplate: "github-releases",
+      depNameTemplate: "golangci/golangci-lint",
+    },
+    {
+      customType: "regex",
+      description: "actionlint version installed via `go install` in the workflows",
+      managerFilePatterns: ["/^\\.github/workflows/.+\\.ya?ml$/"],
+      matchStrings: [
+        "go install github\\.com/rhysd/actionlint/cmd/actionlint@(?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)",
+      ],
+      datasourceTemplate: "github-releases",
+      depNameTemplate: "rhysd/actionlint",
+    },
+    {
+      customType: "regex",
+      description: "checkmake version installed via `go install` in the workflows",
+      managerFilePatterns: ["/^\\.github/workflows/.+\\.ya?ml$/"],
+      matchStrings: [
+        "go install github\\.com/checkmake/checkmake/cmd/checkmake@(?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)",
+      ],
+      datasourceTemplate: "github-releases",
+      depNameTemplate: "checkmake/checkmake",
+    },
+    {
+      customType: "regex",
+      description: "renovate npm package (provides renovate-config-validator) pinned for npx in the workflows and the Makefile",
+      managerFilePatterns: ["/^\\.github/workflows/.+\\.ya?ml$/", "/^Makefile$/"],
+      matchStrings: [
+        "--package renovate@(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)",
+      ],
+      datasourceTemplate: "npm",
+      depNameTemplate: "renovate",
+    },
+    {
+      customType: "regex",
+      description: "GoReleaser binary version pinned for goreleaser-action",
+      managerFilePatterns: ["/^\\.github/workflows/.+\\.ya?ml$/"],
+      matchStrings: [
+        "version:\\s*[\"']?(?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)[\"']?\\s*#\\s*renovate:\\s*goreleaser",
+      ],
+      datasourceTemplate: "github-releases",
+      depNameTemplate: "goreleaser/goreleaser",
+    },
+  ],
+}

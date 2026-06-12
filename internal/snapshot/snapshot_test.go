@@ -15,6 +15,8 @@ func cfgFor(name config.Consistency) *config.Config {
 }
 
 func TestForSelection(t *testing.T) {
+	t.Parallel()
+
 	r := run.NewFakeRunner()
 	for _, name := range []config.Consistency{config.ConsistencyNone, config.ConsistencyFsfreeze, config.ConsistencyLVM} {
 		s, err := For(cfgFor(name), r)
@@ -22,6 +24,7 @@ func TestForSelection(t *testing.T) {
 			t.Errorf("%s: s=%v err=%v", name, s, err)
 		}
 	}
+
 	for _, name := range []config.Consistency{"btrfs-snapshot", "reboot-offline", "bogus"} {
 		if _, err := For(cfgFor(name), r); err == nil {
 			t.Errorf("expected error for strategy %q", name)
@@ -30,19 +33,25 @@ func TestForSelection(t *testing.T) {
 }
 
 func TestNonePrepare(t *testing.T) {
+	t.Parallel()
+
 	p, err := None{}.Prepare(context.Background(), Target{Device: "sda2", Mountpoint: "/"})
 	if err != nil {
 		t.Fatalf("Prepare: %v", err)
 	}
+
 	if p.Source != "/dev/sda2" {
 		t.Errorf("Source = %q", p.Source)
 	}
+
 	if err := p.Release(); err != nil {
 		t.Errorf("Release: %v", err)
 	}
 }
 
 func TestFsfreezeMounted(t *testing.T) {
+	t.Parallel()
+
 	r := run.NewFakeRunner()
 	s := &Fsfreeze{Runner: r}
 
@@ -50,9 +59,11 @@ func TestFsfreezeMounted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Prepare: %v", err)
 	}
+
 	if p.Source != "/dev/sda2" {
 		t.Errorf("Source = %q", p.Source)
 	}
+
 	if err := p.Release(); err != nil {
 		t.Errorf("Release: %v", err)
 	}
@@ -64,6 +75,8 @@ func TestFsfreezeMounted(t *testing.T) {
 }
 
 func TestFsfreezeUnmounted(t *testing.T) {
+	t.Parallel()
+
 	r := run.NewFakeRunner()
 	s := &Fsfreeze{Runner: r}
 
@@ -71,6 +84,7 @@ func TestFsfreezeUnmounted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Prepare: %v", err)
 	}
+
 	if err := p.Release(); err != nil {
 		t.Errorf("Release: %v", err)
 	}
