@@ -271,6 +271,17 @@ EOF
 	# The PV partition node must reappear after partprobe before LVM can scan it
 	# (loop devices emit no udev events), then bring the VG and its LVs back.
 	wait_for_block "$pv" "$loop"
+	# partclone.dd rewrote the raw PV with direct I/O, but the kernel still holds
+	# the buffer-cache pages this loop partition had *before* the restore (the
+	# tampered LV contents). LVM scanning, and the LV mounts below, read the PV
+	# buffered, so without invalidating that cache the higher-offset LV reads
+	# stale bytes and its tamper marker appears to survive the restore. Flush and
+	# invalidate the loop/PV buffers (BLKFLSBUF) so every reader sees the bytes
+	# partclone wrote; drop the global cache too (harmless in the throwaway VM).
+	sync
+	blockdev --flushbufs "$loop" 2>/dev/null || true
+	blockdev --flushbufs "$pv" 2>/dev/null || true
+	[ -w /proc/sys/vm/drop_caches ] && echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
 	activate_vg "$vg" "${lvs[@]}"
 
 	# Verify each LV: files back, marker gone.
