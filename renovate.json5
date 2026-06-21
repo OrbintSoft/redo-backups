@@ -4,12 +4,14 @@
 // requests. It is run by the Mend-hosted Renovate GitHub App (installed on the
 // repository), so no token/secret and no self-hosted workflow are needed: the App
 // authenticates as a GitHub App installation, which can update workflow files and
-// whose PRs trigger CI. There is intentionally no in-config `schedule`: the
-// Mend App runs this repo only periodically (≈weekly), and a narrow schedule
-// window left every update stuck under "Awaiting Schedule" on the dashboard
-// because the App's run never fell inside it. Without a window, Renovate opens
-// PRs on whatever run finds them. Dependabot keeps its own day (Mondays, see
-// .github/dependabot.yml) so the two bots don't pile up on the same day.
+// whose PRs trigger CI. Renovate is scheduled weekly, on a different day from
+// Dependabot (which runs Mondays, see .github/dependabot.yml), so the two bots
+// don't pile up on the same day. The window spans the whole day (not a single
+// narrow hour) so the Mend App's periodic run for this repo lands inside it; a
+// too-narrow window can leave updates parked under "Awaiting Schedule". (The
+// earlier "no PRs created at all" symptom was a branch-namespace conflict — a
+// branch literally named `renovate` blocking the `renovate/*` namespace — since
+// fixed, not the schedule.)
 //
 // What it manages:
 //   - The Go toolchain: the `go` directive in go.mod (the CI workflows read it via
@@ -37,9 +39,10 @@
     "helpers:pinGitHubActionDigests",
   ],
 
-  // No `schedule`: see the header note. Renovate opens PRs on any run that finds
-  // updates. The Dependency Dashboard issue lets us still review/force individual
-  // updates from a checkbox when wanted.
+  // Weekly cadence on Wednesdays (Dependabot owns Mondays); a full-day window so
+  // the Mend App's run lands inside it (see the header note). The Dependency
+  // Dashboard still lets us review/force individual updates from a checkbox.
+  schedule: ["* * * * 3"],
   dependencyDashboard: true,
 
   labels: ["dependencies", "renovate"],
