@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: EUPL-1.2
 #
 # Dependabot keeps dependencies up to date, opening a PR when an update is
-# available. It runs weekly.
+# available. It runs weekly on Mondays, a different day from Renovate
+# (renovate.json5), so the two bots don't open PRs on the same day.
 #
 # Note: Dependabot does not support Vagrant boxes, so the integration VM image
 # (test/integration/Vagrantfile) is not auto-updated here; bump REDO_ITEST_BOX
@@ -14,6 +15,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
     commit-message:
       prefix: "build"
     labels:
@@ -24,6 +28,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
     commit-message:
       prefix: "ci"
     labels:

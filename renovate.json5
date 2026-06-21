@@ -4,7 +4,12 @@
 // requests. It is run by the Mend-hosted Renovate GitHub App (installed on the
 // repository), so no token/secret and no self-hosted workflow are needed: the App
 // authenticates as a GitHub App installation, which can update workflow files and
-// whose PRs trigger CI. Cadence is weekly (schedule:weekly).
+// whose PRs trigger CI. There is intentionally no in-config `schedule`: the
+// Mend App runs this repo only periodically (≈weekly), and a narrow schedule
+// window left every update stuck under "Awaiting Schedule" on the dashboard
+// because the App's run never fell inside it. Without a window, Renovate opens
+// PRs on whatever run finds them. Dependabot keeps its own day (Mondays, see
+// .github/dependabot.yml) so the two bots don't pile up on the same day.
 //
 // What it manages:
 //   - The Go toolchain: the `go` directive in go.mod (the CI workflows read it via
@@ -20,18 +25,22 @@
 //     Vagrant boxes) and the apt/apk packages in test/integration/provision.sh
 //     (installed without versions). See DEPENDENCIES.md.
 //
-// Dependabot is kept in parallel (.github/dependabot.yml); expect occasional
-// duplicate PRs on Go modules / Actions until one of the two is retired.
+// Dependabot is kept in parallel on purpose (.github/dependabot.yml), pinned to
+// Mondays so it runs on a different day. The two may occasionally open duplicate
+// PRs on Go modules / Actions; that is accepted as the cost of running both.
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
 
   extends: [
     "config:recommended",
-    // Run once a week rather than continuously.
-    "schedule:weekly",
     // Pin every GitHub Action to a commit SHA, keeping a readable `# vX` comment.
     "helpers:pinGitHubActionDigests",
   ],
+
+  // No `schedule`: see the header note. Renovate opens PRs on any run that finds
+  // updates. The Dependency Dashboard issue lets us still review/force individual
+  // updates from a checkbox when wanted.
+  dependencyDashboard: true,
 
   labels: ["dependencies", "renovate"],
   semanticCommits: "enabled",
