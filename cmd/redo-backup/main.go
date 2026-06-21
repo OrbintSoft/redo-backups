@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strings"
 
 	"github.com/OrbintSoft/redo-backups/internal/backup"
@@ -18,8 +19,26 @@ import (
 )
 
 // version is the redo-backups tool version (distinct from the Redo Rescue
-// on-disk format version). Overridable at build time via -ldflags.
+// on-disk format version). Overridable at build time via -ldflags (the release
+// build sets -X main.version=...); see resolveVersion for the runtime fallback.
 var version = "0.0.0-dev"
+
+// resolveVersion reports the tool version. It prefers the value injected at
+// build time via -ldflags; when that was not set — for example when the binary
+// was produced by `go install` — it falls back to the module version embedded
+// in the build info, so installed builds report a meaningful version instead of
+// the placeholder.
+func resolveVersion() string {
+	if version != "0.0.0-dev" {
+		return version
+	}
+
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+
+	return version
+}
 
 // Process exit codes returned by the CLI sub-commands.
 const (
@@ -66,7 +85,7 @@ func dispatch(args []string, stdout, stderr *os.File) int {
 	case "show":
 		return cmdShow(args[1:], stdout, stderr)
 	case "version", "--version", "-v":
-		fmt.Fprintln(stdout, version)
+		fmt.Fprintln(stdout, resolveVersion())
 
 		return exitOK
 	case "help", "--help", "-h":
