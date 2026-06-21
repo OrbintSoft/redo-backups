@@ -1,10 +1,3 @@
-# SPDX-License-Identifier: EUPL-1.2
-#
-# GitHub funding links shown on the repository "Sponsor" button.
-# Only platforms with native support are listed here (custom takes plain URLs
-# with no per-link description). The upstream Redo Rescue project, which this
-# tool is compatible with, is a third party we don't manage; its donation
-# details live in the README instead.
 github: OrbintSoft
 custom:
   - "https://paypal.com/orbintsoft"
