@@ -12,8 +12,10 @@
 // .github/dependabot.yml) so the two bots don't pile up on the same day.
 //
 // What it manages:
-//   - The Go toolchain: the `go` directive in go.mod (the CI workflows read it via
-//     `go-version-file: go.mod`, so bumping go.mod bumps CI too).
+//   - The Go toolchain: the `go` and `toolchain` directives in go.mod (the CI
+//     workflows read them via `go-version-file: go.mod`, so bumping go.mod bumps
+//     CI too). `toolchain go1.26.x` pins the exact build toolchain for
+//     reproducible releases; `go 1.26` stays the language floor.
 //   - Any third-party Go module (currently none; stdlib only).
 //   - Every GitHub Action, pinned to a full-length commit SHA (helpers preset).
 //   - The golangci-lint, actionlint, checkmake, GoReleaser, and renovate
