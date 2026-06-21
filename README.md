@@ -88,7 +88,14 @@ the [example configuration](examples/etc/redo-backups/example.conf).
 
 ## Quick start
 
-Build the binary (Go 1.26+):
+Install the latest release with Go 1.26+ (the binary lands in
+`$(go env GOPATH)/bin`, so add that to your `PATH`):
+
+```sh
+go install github.com/OrbintSoft/redo-backups/cmd/redo-backup@latest
+```
+
+Or build from a checkout:
 
 ```sh
 go build -o redo-backup ./cmd/redo-backup
@@ -129,7 +136,8 @@ redo-backup run nightly --dest /mnt/usb --consistency fsfreeze --dry-run
 
 ## Requirements
 
-- Go (to build) — produces a single static binary.
+- Go (to build, or to `go install` the released binary) — produces a single
+  static binary.
 - Runtime tools on the target system: `partclone.*`, `pigz`, `split`, `coreutils`,
   `util-linux` (`sfdisk`, `lsblk`, `blockdev`, `findmnt`, `fsfreeze`). The `fsfreeze` and
   `lvm` strategies use `fsfreeze`; nothing extra beyond `util-linux` is required.
