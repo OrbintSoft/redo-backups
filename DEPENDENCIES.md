@@ -18,7 +18,7 @@ Needed to compile, test, lint, and release the project.
 
 | Tool | Purpose | Notes |
 |------|---------|-------|
-| **Go** ≥ 1.26 | Compile and test | `go 1.26` in [go.mod](go.mod) is the single source of truth; CI reads it via `go-version-file: go.mod`. Bumped by Renovate. |
+| **Go** ≥ 1.26 | Compile and test | `go 1.26` in [go.mod](go.mod) is the language floor; `toolchain go1.26.3` pins the exact build toolchain so release binaries are reproducible/immutable. CI reads both via `go-version-file: go.mod`, so go.mod is the single source of truth. Both bumped by Renovate. |
 | `GOEXPERIMENT=goroutineleakprofile` | Goroutine leak detection in tests (`make leakcheck`, CI `leakcheck` job) | Build-time toggle that arms Go 1.26's experimental `goroutineleak` pprof profile. The per-package `TestMain` in [internal/leakcheck](internal/leakcheck/) fails the suite on goroutines left blocked on an unreachable concurrency primitive; without the toggle the profile is absent and the check is a no-op. Planned to be on by default in Go 1.27 — drop the toggle then. |
 | **git** | Version stamping | `make` derives the version from `git describe`. Optional; falls back to `dev`. |
 | **make** | Convenience build/install | Optional; you can call `go`/`install` directly. |
