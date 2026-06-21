@@ -4,6 +4,7 @@
 [![Release](https://github.com/OrbintSoft/redo-backups/actions/workflows/release.yml/badge.svg)](https://github.com/OrbintSoft/redo-backups/actions/workflows/release.yml)
 [![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OrbintSoft/redo-backups/badges/coverage.json)](https://github.com/OrbintSoft/redo-backups/actions/workflows/coverage.yml)
 [![License: EUPL-1.2](https://img.shields.io/badge/license-EUPL--1.2-blue.svg)](LICENSE)
+[![Sponsor](https://img.shields.io/badge/Sponsor-OrbintSoft-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/OrbintSoft)
 
 Create **live** disk/partition backups that are **100% compatible with
 [Redo Rescue](https://redorescue.com)**, so they can be restored from the official Redo
@@ -133,10 +134,26 @@ redo-backup run nightly --dest /mnt/usb --consistency fsfreeze --dry-run
   `util-linux` (`sfdisk`, `lsblk`, `blockdev`, `findmnt`, `fsfreeze`). The `fsfreeze` and
   `lvm` strategies use `fsfreeze`; nothing extra beyond `util-linux` is required.
 
+## Sponsoring
+
+If this project is useful to you, please consider supporting its development:
+
+- [GitHub Sponsors](https://github.com/sponsors/OrbintSoft)
+- [PayPal](https://paypal.com/orbintsoft)
+
+This project would not exist without **[Redo Rescue](https://redorescue.com)**, whose
+backup/restore format it implements. Redo Rescue is an independent third-party project
+(not mine and not managed by me) — please consider supporting it too. Redo Rescue accepts
+Bitcoin donations at:
+
+```
+1redoitC6r8JhUSrt5sVvF3ZEMj1kFyq2
+```
+
 ## Licence
 
 [EUPL-1.2](LICENSE). © 2026 Stefano Balzarotti (Orbintsoft), with the support of Claude
-agent AI.
+agent AI. See [COPYRIGHT.md](COPYRIGHT.md) for the copyright notice.
 
 ## Acknowledgements
 
