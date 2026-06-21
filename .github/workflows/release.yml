@@ -1,9 +1,17 @@
 # SPDX-License-Identifier: EUPL-1.2
 name: Release
 
+# Cutting a release is expensive (it runs the KVM integration suite) and is only
+# meaningful when the built binary changes, so this workflow runs only when Go
+# source changes on master. Pushes that touch only docs, CI config, licensing,
+# or dependency/toolchain pins neither run the integration suite nor cut a tag.
+# workflow_dispatch stays for manual releases (e.g. after a .goreleaser.yaml or
+# toolchain bump that should be shipped).
 on:
   push:
     branches: [master]
+    paths:
+      - '**.go'
   workflow_dispatch:
 
 permissions:
