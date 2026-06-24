@@ -37,8 +37,12 @@
 
   extends: [
     "config:recommended",
-    // Pin every GitHub Action to a commit SHA, keeping a readable `# vX` comment.
-    "helpers:pinGitHubActionDigests",
+    // Pin every GitHub Action to a commit SHA, keeping the full SemVer in the
+    // trailing comment (`# vX.Y.Z`, via this preset's extractVersion/versioning).
+    // This makes digest bumps auditable: when upstream moves a major tag (e.g.
+    // v6 -> v6.5.0) the comment changes too, so minor/patch updates show up as
+    // explicit version changes in the PR rather than as a silent SHA swap.
+    "helpers:pinGitHubActionDigestsToSemver",
   ],
 
   // Weekly cadence on Wednesdays (Dependabot owns Mondays); a full-day window so
