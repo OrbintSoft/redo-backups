@@ -131,4 +131,4 @@ jobs:
       # `renovate` version is pinned and bumped by Renovate (renovate.json5);
       # --strict makes warnings (e.g. deprecated options) fail the job.
       - name: Validate Renovate config
-        run: npx --yes --package renovate@43.249.5 -- renovate-config-validator --strict
+        run: npx --yes --package renovate@43.255.2 -- renovate-config-validator --strict
