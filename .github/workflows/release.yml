@@ -90,7 +90,7 @@ jobs:
           # Version pinned and bumped by Renovate (.github/renovate.json5). A
           # major bump may need changes to .goreleaser.yaml, which the release run
           # would surface.
-          version: "v2.16.0" # renovate: goreleaser
+          version: "v2.17.0" # renovate: goreleaser
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
