@@ -74,6 +74,32 @@ func TestFsfreezeMounted(t *testing.T) {
 	}
 }
 
+func TestFsfreezeUnfreezableFS(t *testing.T) {
+	t.Parallel()
+
+	for _, fs := range []string{"vfat", "VFAT", "exfat"} {
+		r := run.NewFakeRunner()
+		s := &Fsfreeze{Runner: r}
+
+		p, err := s.Prepare(context.Background(), Target{Device: "sda1", Mountpoint: "/boot/efi", FS: fs})
+		if err != nil {
+			t.Fatalf("%s: Prepare: %v", fs, err)
+		}
+
+		if p.Source != "/dev/sda1" {
+			t.Errorf("%s: Source = %q", fs, p.Source)
+		}
+
+		if err := p.Release(); err != nil {
+			t.Errorf("%s: Release: %v", fs, err)
+		}
+		// Unfreezable filesystem: no fsfreeze calls, imaged directly.
+		if got := r.CommandLines(); len(got) != 0 {
+			t.Errorf("%s: expected no commands, got %v", fs, got)
+		}
+	}
+}
+
 func TestFsfreezeUnmounted(t *testing.T) {
 	t.Parallel()
 
