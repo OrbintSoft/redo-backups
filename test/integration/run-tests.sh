@@ -185,6 +185,7 @@ EOF
 		fi
 	done
 
+	purge_layout "$WORK" "$name"
 	[ "$ok" -eq 1 ]
 }
 
@@ -309,6 +310,12 @@ EOF
 		fi
 	done
 
+	# Tear the VG down (the EXIT trap would otherwise be the only thing to do
+	# it) before purging the underlying loop image, so the next layout isn't
+	# competing with this one's artifacts for disk space.
+	vgchange -an "$vg" >/dev/null 2>&1 || true
+	vgremove -f "$vg" >/dev/null 2>&1 || true
+	purge_layout "$WORK" "$name"
 	[ "$ok" -eq 1 ]
 }
 
@@ -416,6 +423,7 @@ EOF
 		fi
 	done
 
+	purge_layout "$WORK" "$name"
 	[ "$ok" -eq 1 ]
 }
 

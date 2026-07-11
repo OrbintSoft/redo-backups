@@ -90,6 +90,27 @@ write_testdata() {
 	sync
 }
 
+# purge_layout removes every artifact layout $2 left under work directory $1
+# (loop device, mount-point dirs, backup output, checksum files) once its
+# result has been recorded. Layouts otherwise only get cleaned up by the
+# EXIT trap, so their loop images and backup output accumulate across the
+# whole run; on a small CI disk that's enough to exhaust it once a few
+# layouts have run. Best-effort throughout: a layout that failed early may
+# not have created everything this tries to remove.
+purge_layout() {
+	local work="$1" name="$2"
+	local mp
+	for mp in "$work"/mnt_"${name}"_* "$work"/tamper_"${name}"_* "$work"/verify_"${name}"_*; do
+		[ -d "$mp" ] && umount "$mp" 2>/dev/null
+	done
+	local img="$work/disk_$name.img" loop
+	for loop in $(losetup -j "$img" 2>/dev/null | cut -d: -f1); do
+		losetup -d "$loop" 2>/dev/null || true
+	done
+	rm -rf "$work"/mnt_"${name}"_* "$work"/tamper_"${name}"_* "$work"/verify_"${name}"_* \
+		"$work"/sum_"${name}"_* "$work/backup_$name" "$img"
+}
+
 # Marker file left behind by tamper_fs; it must be gone after a restore.
 TAMPER_MARKER="SHOULD_BE_GONE_AFTER_RESTORE"
 
