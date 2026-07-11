@@ -312,6 +312,113 @@ EOF
 	[ "$ok" -eq 1 ]
 }
 
+# run_fsfreeze_layout exercises the 'fsfreeze' consistency strategy across a
+# mix of filesystems: ext4 (freezable) and vfat (not freezable — see the
+# unfreezableFS table in internal/snapshot/fsfreeze.go). Both partitions stay
+# mounted through the backup call, unlike run_layout (which unmounts first), so
+# this is the only layout that actually drives fsfreeze -f/-u and exercises the
+# vfat skip-freeze path against a real EFI-system-partition-like filesystem.
+run_fsfreeze_layout() {
+	local name="fsfreeze-mixed"
+	log "=== layout: $name (gpt, vfat+ext4, consistency=fsfreeze) ==="
+
+	local img="$WORK/disk_$name.img"
+	truncate -s 300M "$img"
+	local loop base
+	loop="$(losetup -fP --show "$img")"
+	base="$(basename "$loop")"
+	CLEANUP_LOOPS+=("$loop")
+
+	printf 'label: gpt\n,64MiB,L\n,160MiB,L\n' | sfdisk "$loop" >/dev/null
+	partprobe "$loop" 2>/dev/null || true
+
+	# Format and fill both partitions; KEEP them mounted (the fsfreeze strategy
+	# freezes the ext4 one and skips-and-images-directly the vfat one).
+	local -a fslist=(vfat ext4)
+	local idx=0 fs part mp
+	for fs in "${fslist[@]}"; do
+		idx=$((idx + 1))
+		part="${loop}p${idx}"
+		wait_for_block "$part" "$loop"
+		log "  mkfs.$fs $part"
+		case "$fs" in
+			vfat) mkfs.vfat "$part" >/dev/null ;;
+			ext4) mkfs.ext4 -q -F "$part" ;;
+		esac
+		mp="$WORK/mnt_${name}_${idx}"
+		mkdir -p "$mp"
+		mount "$part" "$mp"
+		write_testdata "$mp"
+		checksum_tree "$mp" > "$WORK/sum_${name}_${idx}.before"
+	done
+
+	local dest="$WORK/backup_$name"
+	mkdir -p "$dest" /etc/redo-backups
+	cat > /etc/redo-backups/itest.conf <<EOF
+dest = $dest
+drive = $base
+parts = auto
+id = $name
+notes = integration $name
+consistency = fsfreeze
+compressor = gzip
+EOF
+	if ! "$BIN" run itest; then
+		err "  backup command failed for $name"
+		return 1
+	fi
+	log "  backup produced:"
+	ls -la "$dest" | sed 's/^/[itest]     /'
+	if ! ls "$dest/${name}_"*.img >/dev/null 2>&1; then
+		err "  backup produced no .img chunks"
+		return 1
+	fi
+
+	# Tamper on the still-mounted partitions, then unmount so the restore can
+	# overwrite them.
+	idx=0
+	for fs in "${fslist[@]}"; do
+		idx=$((idx + 1))
+		tamper_fs "$WORK/mnt_${name}_${idx}"
+	done
+	idx=0
+	for fs in "${fslist[@]}"; do
+		idx=$((idx + 1))
+		umount "$WORK/mnt_${name}_${idx}"
+	done
+
+	log "  restore onto /dev/$base"
+	"$here/restore.sh" "$dest/$name.redo" "$base"
+	partprobe "$loop" 2>/dev/null || true
+	sleep 1
+
+	local ok=1 marker_present
+	idx=0
+	for fs in "${fslist[@]}"; do
+		idx=$((idx + 1))
+		part="${loop}p${idx}"
+		wait_for_block "$part" "$loop"
+		mp="$WORK/verify_${name}_${idx}"
+		mkdir -p "$mp"
+		mount "$part" "$mp"
+		marker_present=0
+		[ -e "$mp/$TAMPER_MARKER" ] && marker_present=1
+		checksum_tree "$mp" > "$WORK/sum_${name}_${idx}.after"
+		umount "$mp"
+		if [ "$marker_present" -eq 1 ]; then
+			err "  partition $idx ($fs): tamper marker survived restore"
+			ok=0
+		elif diff -u "$WORK/sum_${name}_${idx}.before" "$WORK/sum_${name}_${idx}.after" >/dev/null; then
+			log "  partition $idx ($fs): files restored, marker gone — OK"
+		else
+			err "  partition $idx ($fs): CONTENT MISMATCH after restore"
+			ok=0
+		fi
+	done
+
+	[ "$ok" -eq 1 ]
+}
+
 record_result() {
 	local label="$1" rc="$2"
 	if [ "$rc" -eq 0 ]; then
@@ -341,6 +448,11 @@ if is_selected "lvm-ext4"; then
 	else
 		record_result "lvm-ext4" 1
 	fi
+fi
+
+if is_selected "fsfreeze-mixed"; then
+	ran_any=1
+	if run_fsfreeze_layout; then record_result "fsfreeze-mixed" 0; else record_result "fsfreeze-mixed" 1; fi
 fi
 
 [ "$ran_any" -eq 1 ] || die "no matching layouts"

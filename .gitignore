@@ -19,3 +19,6 @@ coverage.html
 # Local backup test artifacts (never commit real backups)
 *.redo
 *.img
+
+# Local Vagrant state for the integration suite
+test/integration/.vagrant/

@@ -34,6 +34,15 @@ the PV partition raw while they stay mounted), tears the VG down, restores the r
 PV, brings the VG back, and verifies the LVs. It is skipped automatically if
 `lvm2` is not installed.
 
+And an **`fsfreeze-mixed`** layout that exercises the `fsfreeze` consistency
+strategy: a vfat partition and an ext4 partition stay mounted through the
+backup, so `fsfreeze -f`/`-u` actually wraps the ext4 imaging while the vfat
+one — which doesn't support the FIFREEZE ioctl — is detected and imaged
+directly instead of erroring (see `unfreezableFS` in
+`internal/snapshot/fsfreeze.go`). Unlike the other layouts, which unmount
+before backing up, this is the only one that drives fsfreeze against a real
+mounted filesystem.
+
 ## Requirements
 
 - On the **host**: [Vagrant](https://www.vagrantup.com/) with a provider
