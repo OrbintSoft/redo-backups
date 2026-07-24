@@ -44,7 +44,7 @@ CHECKMAKE ?= $(shell command -v checkmake 2>/dev/null || echo "$(shell $(GO) env
 # no global install is needed. The version is pinned (and bumped by Renovate,
 # in sync with the CI pin) so the schema matches; override RENOVATE_VALIDATE to
 # change it. An unpinned `renovate` can resolve to a stale npx cache.
-RENOVATE_VALIDATE ?= npx --yes --package renovate@43.275.0 -- renovate-config-validator --strict
+RENOVATE_VALIDATE ?= npx --yes --package renovate@43.279.0 -- renovate-config-validator --strict
 
 # Integration tests (Vagrant). VAGRANT can be set to e.g. "sudo vagrant" when the
 # provider needs root; LAYOUTS restricts which disk layouts run (empty = all).
