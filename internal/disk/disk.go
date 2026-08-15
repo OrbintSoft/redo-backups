@@ -23,14 +23,32 @@ import (
 // (no "/dev/" prefix, no path separators).
 var devNameRE = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
+// cmdLsblk is the util-linux command used for every device query.
+const cmdLsblk = "lsblk"
+
+// lsblkFields are the columns requested when inspecting a drive. Besides the
+// facts the descriptor needs, it collects the identifiers that stay stable
+// across reboots (UUID, PARTLABEL, PARTUUID), so a profile can name partitions
+// without depending on kernel names, which are assigned in probe order and can
+// shift when drives are added or removed.
+const lsblkFields = "NAME,SIZE,FSTYPE,PARTTYPENAME,LABEL,UUID,PARTLABEL,PARTUUID,MOUNTPOINT,TYPE"
+
+// drivePathRE matches a persistent whole-drive symlink under /dev/disk/by-*/.
+// The same shape is enforced when a profile is validated (see
+// config.driveByPathRE); it is repeated here because this package never trusts
+// its caller with a path it hands to an external command.
+var drivePathRE = regexp.MustCompile(`^/dev/disk/by-[a-z]+/[a-zA-Z0-9_.:+-]+$`)
+
 // Sentinel inspection errors. Dynamic context (the device name, sizes) is added
 // by wrapping these with %w, so they remain matchable with errors.Is.
 var (
-	errDriveNotFound  = errors.New("disk: drive not found in lsblk output")
-	errNoRootSource   = errors.New("disk: could not determine root source device")
-	errNoParentDisk   = errors.New("disk: device has no parent disk")
-	errMBRSize        = errors.New("disk: unexpected MBR size")
-	errInvalidDevName = errors.New("disk: invalid device name")
+	errDriveNotFound   = errors.New("disk: drive not found in lsblk output")
+	errNoRootSource    = errors.New("disk: could not determine root source device")
+	errNoParentDisk    = errors.New("disk: device has no parent disk")
+	errMBRSize         = errors.New("disk: unexpected MBR size")
+	errInvalidDevName  = errors.New("disk: invalid device name")
+	errInvalidDevPath  = errors.New("disk: invalid device path")
+	errNoDeviceForPath = errors.New("disk: no device behind path")
 )
 
 // Partition describes one partition discovered on a drive.
@@ -47,6 +65,14 @@ type Partition struct {
 	FS string
 	// Label is the filesystem label (lsblk LABEL), possibly empty.
 	Label string
+	// UUID is the filesystem UUID (lsblk UUID), possibly empty.
+	UUID string
+	// PartLabel is the partition-table name of the partition (lsblk PARTLABEL,
+	// GPT only), possibly empty.
+	PartLabel string
+	// PartUUID is the partition-table UUID of the partition (lsblk PARTUUID),
+	// possibly empty.
+	PartUUID string
 	// Mountpoint is where the partition is currently mounted, or empty if it is
 	// not mounted.
 	Mountpoint string
@@ -81,6 +107,9 @@ type lsblkDevice struct {
 	FSType       string        `json:"fstype"`
 	PartTypeName string        `json:"parttypename"`
 	Label        string        `json:"label"`
+	UUID         string        `json:"uuid"`
+	PartLabel    string        `json:"partlabel"`
+	PartUUID     string        `json:"partuuid"`
 	Mountpoint   string        `json:"mountpoint"`
 	Type         string        `json:"type"`
 	Children     []lsblkDevice `json:"children"`
@@ -95,8 +124,8 @@ func (i *Inspector) Drive(ctx context.Context, name string) (*Drive, error) {
 	}
 
 	res, err := i.Runner.Run(ctx, run.Command{
-		Name: "lsblk",
-		Args: []string{"-J", "-o", "NAME,SIZE,FSTYPE,PARTTYPENAME,LABEL,MOUNTPOINT,TYPE", "--", "/dev/" + name},
+		Name: cmdLsblk,
+		Args: []string{"-J", "-o", lsblkFields, "--", "/dev/" + name},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("disk: lsblk %s: %w", name, err)
@@ -136,6 +165,9 @@ func (i *Inspector) Drive(ctx context.Context, name string) (*Drive, error) {
 			Type:       c.PartTypeName,
 			FS:         c.FSType,
 			Label:      c.Label,
+			UUID:       c.UUID,
+			PartLabel:  c.PartLabel,
+			PartUUID:   c.PartUUID,
 			Mountpoint: c.Mountpoint,
 		})
 	}
@@ -160,7 +192,7 @@ func (i *Inspector) RootDrive(ctx context.Context) (string, error) {
 	}
 
 	pk, err := i.Runner.Run(ctx, run.Command{
-		Name: "lsblk", Args: []string{"-n", "-o", "PKNAME", source},
+		Name: cmdLsblk, Args: []string{"-n", "-o", "PKNAME", source},
 	})
 	if err != nil {
 		return "", fmt.Errorf("disk: finding parent of %s: %w", source, err)
@@ -169,6 +201,36 @@ func (i *Inspector) RootDrive(ctx context.Context) (string, error) {
 	name := firstLine(string(pk.Stdout))
 	if name == "" {
 		return "", fmt.Errorf("%w: %s", errNoParentDisk, source)
+	}
+
+	if err := validateDevName(name); err != nil {
+		return "", err
+	}
+
+	return name, nil
+}
+
+// ResolveDrivePath resolves a persistent "/dev/disk/by-*/" symlink to the
+// kernel name of the drive behind it, e.g.
+// "/dev/disk/by-id/ata-MODEL_SERIAL" -> "sdb". Unlike kernel names, which are
+// assigned in probe order, these links survive adding or removing drives, so a
+// saved profile can name its target unambiguously.
+func (i *Inspector) ResolveDrivePath(ctx context.Context, path string) (string, error) {
+	if !drivePathRE.MatchString(path) {
+		return "", fmt.Errorf("%w %q", errInvalidDevPath, path)
+	}
+
+	res, err := i.Runner.Run(ctx, run.Command{
+		Name: cmdLsblk, Args: []string{"-n", "-o", "KNAME", "--", path},
+	})
+	if err != nil {
+		return "", fmt.Errorf("disk: resolving %s: %w", path, err)
+	}
+
+	// lsblk lists the device first, then its children; the drive is the first line.
+	name := firstLine(string(res.Stdout))
+	if name == "" {
+		return "", fmt.Errorf("%w: %s", errNoDeviceForPath, path)
 	}
 
 	if err := validateDevName(name); err != nil {

@@ -46,14 +46,12 @@ func (c *Config) Validate() error {
 		return errDestRequired
 	}
 
-	if !c.DriveAuto() && !devNameRE.MatchString(c.Drive) {
-		return fmt.Errorf("%w %q", errInvalidDrive, c.Drive)
+	if err := c.validateDrive(); err != nil {
+		return err
 	}
 
-	for _, p := range c.Parts {
-		if !devNameRE.MatchString(p) {
-			return fmt.Errorf("%w %q in 'parts'", errInvalidPartName, p)
-		}
+	if _, err := c.PartRefs(); err != nil {
+		return err
 	}
 
 	if c.ID != "" && !idRE.MatchString(c.ID) {
@@ -77,4 +75,23 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
+}
+
+// validateDrive accepts the "auto" sentinel, a persistent "/dev/disk/by-*/"
+// symlink, or a bare kernel device name such as "sda".
+func (c *Config) validateDrive() error {
+	switch {
+	case c.DriveAuto():
+		return nil
+	case c.DriveIsPath():
+		if !driveByPathRE.MatchString(c.Drive) {
+			return fmt.Errorf("%w %q (want /dev/disk/by-<kind>/<name>)", errInvalidDrive, c.Drive)
+		}
+
+		return nil
+	case devNameRE.MatchString(c.Drive):
+		return nil
+	default:
+		return fmt.Errorf("%w %q", errInvalidDrive, c.Drive)
+	}
 }

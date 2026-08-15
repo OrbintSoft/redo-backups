@@ -208,13 +208,22 @@ func (b *Backup) resolveTarget(
 	cfg *config.Config,
 ) (string, *disk.Drive, []disk.Partition, error) {
 	drive := cfg.Drive
-	if cfg.DriveAuto() {
+
+	switch {
+	case cfg.DriveAuto():
 		root, err := b.Inspector.RootDrive(ctx)
 		if err != nil {
 			return "", nil, nil, err
 		}
 
 		drive = root
+	case cfg.DriveIsPath():
+		name, err := b.Inspector.ResolveDrivePath(ctx, cfg.Drive)
+		if err != nil {
+			return "", nil, nil, err
+		}
+
+		drive = name
 	}
 
 	d, err := b.Inspector.Drive(ctx, drive)

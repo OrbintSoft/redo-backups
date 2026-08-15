@@ -8,6 +8,7 @@ import (
 	_ "embed"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -22,7 +23,7 @@ var lsblkSDA string
 
 func fakeRunner() *run.FakeRunner {
 	f := run.NewFakeRunner()
-	f.AddStdout("lsblk -J -o NAME,SIZE,FSTYPE,PARTTYPENAME,LABEL,MOUNTPOINT,TYPE -- /dev/sda", lsblkSDA)
+	f.AddStdout("lsblk -J -o NAME,SIZE,FSTYPE,PARTTYPENAME,LABEL,UUID,PARTLABEL,PARTUUID,MOUNTPOINT,TYPE -- /dev/sda", lsblkSDA)
 	f.AddStdout("blockdev --getsize64 /dev/sda", "512110190592\n")
 	f.AddStdout("blockdev --getsize64 /dev/sda1", "133169152\n")
 	f.AddStdout("blockdev --getsize64 /dev/sda2", "299892736\n")
@@ -99,6 +100,36 @@ func TestBackupRun(t *testing.T) {
 		filepath.Join(dest, "20260105_sda1_")
 	if first[2].String() != wantSplit {
 		t.Errorf("split stage = %q, want %q", first[2].String(), wantSplit)
+	}
+}
+
+func TestBackupRunDriveByPath(t *testing.T) {
+	t.Parallel()
+
+	const path = "/dev/disk/by-id/ata-MODEL_SERIAL"
+
+	f := fakeRunner()
+	f.AddStdout("lsblk -n -o KNAME -- "+path, "sda\nsda1\nsda2\n")
+
+	cfg := baseConfig(t.TempDir())
+	cfg.Drive = path
+	// Name the partitions the stable way too, so the whole profile is free of
+	// kernel names.
+	cfg.Parts = []string{"LABEL=boot"}
+
+	b := &Backup{Runner: f, Inspector: disk.New(f), Clock: fixedClock(), LogDir: t.TempDir()}
+
+	rep, err := b.Run(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if rep.Drive != "sda" {
+		t.Errorf("Drive = %q, want sda", rep.Drive)
+	}
+
+	if !reflect.DeepEqual(rep.Partitions, []string{"sda2"}) {
+		t.Errorf("Partitions = %v, want [sda2]", rep.Partitions)
 	}
 }
 

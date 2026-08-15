@@ -53,7 +53,7 @@ Needed on the target system to **take** a backup. Imaging requires **root**.
 | **partclone** | `partclone.extfs`, `partclone.fat`, `partclone.ntfs`, `partclone.btrfs`, `partclone.xfs`, `partclone.f2fs`, `partclone.exfat`, `partclone.hfsp`, `partclone.minix`, `partclone.nilfs2`, `partclone.reiser4`, `partclone.dd` | Imaging each partition (see [docs/redo-format.md](docs/redo-format.md)). Only the binaries for the filesystems you back up are required. |
 | **pigz** (or **gzip**) | `pigz` / `gzip` | Compressing the image stream. `pigz` is the default; `gzip` is selectable via config. |
 | **coreutils** | `split`, `dd`, `cat`, `truncate` | Splitting chunks, reading the MBR, stream handling. |
-| **util-linux** | `lsblk`, `sfdisk`, `blockdev`, `findmnt`, `fsfreeze`, `wipefs`, `partprobe` | Disk discovery, partition table dump, sizes, root-drive detection, freezing (used by both the `fsfreeze` and `lvm` consistency strategies), and (restore-side) wiping/partitioning. |
+| **util-linux** | `lsblk`, `sfdisk`, `blockdev`, `findmnt`, `fsfreeze`, `wipefs`, `partprobe` | Disk discovery, partition table dump, sizes, root-drive detection, resolving stable target references (`LABEL=`/`UUID=`/`PARTLABEL=`/`PARTUUID=` and `/dev/disk/by-*/` links, via `lsblk`), freezing (used by both the `fsfreeze` and `lvm` consistency strategies), and (restore-side) wiping/partitioning. |
 
 ### Optional / not yet required
 

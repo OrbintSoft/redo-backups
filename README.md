@@ -53,6 +53,23 @@ Backups are configured under `/etc/redo-backups/`:
 A ready-to-edit profile with every setting documented is provided under
 [examples/etc/redo-backups/](examples/etc/redo-backups/).
 
+### Naming the target
+
+Kernel device names (`sda`, `sda1`) are assigned in probe order: adding or removing a
+drive can renumber them, and a profile saved months earlier then points somewhere else.
+Targets can therefore be named the stable way:
+
+```sh
+drive = auto                          # the drive hosting the root filesystem
+drive = /dev/disk/by-id/ata-MODEL_SN  # or any persistent udev "by-*" symlink
+parts = LABEL=root, UUID=…, PARTLABEL=…, PARTUUID=…
+```
+
+The `TAG=value` forms are the same ones `fstab` uses. Bare kernel names still work, and
+mixing the two is allowed. Each reference must match **exactly one** partition of the
+drive: a reference matching none — or several, as duplicate labels do — aborts the run
+with the available partitions listed, rather than imaging the wrong device.
+
 ### Consistency strategies
 
 Imaging a live, mounted filesystem can capture an inconsistent state, so the strategy is
