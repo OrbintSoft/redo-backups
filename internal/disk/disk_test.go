@@ -130,6 +130,41 @@ func TestResolveDrivePathRejectsForeignPaths(t *testing.T) {
 	}
 }
 
+func TestFlushBuffers(t *testing.T) {
+	t.Parallel()
+
+	f := run.NewFakeRunner()
+	if err := New(f).FlushBuffers(context.Background(), "/dev/sda1"); err != nil {
+		t.Fatalf("FlushBuffers: %v", err)
+	}
+
+	if got := f.CommandLines(); len(got) != 1 || got[0] != "blockdev --flushbufs /dev/sda1" {
+		t.Errorf("commands = %v", got)
+	}
+}
+
+func TestFlushBuffersDeviceMapperPath(t *testing.T) {
+	t.Parallel()
+
+	// LVM and device-mapper nodes carry an extra path segment.
+	f := run.NewFakeRunner()
+	if err := New(f).FlushBuffers(context.Background(), "/dev/mapper/vg-lv"); err != nil {
+		t.Fatalf("FlushBuffers: %v", err)
+	}
+}
+
+func TestFlushBuffersRejectsBadPaths(t *testing.T) {
+	t.Parallel()
+
+	insp := New(run.NewFakeRunner())
+
+	for _, path := range []string{"sda1", "/etc/passwd", "/dev/../etc/passwd", "/dev/sda1; rm -rf /"} {
+		if err := insp.FlushBuffers(context.Background(), path); err == nil {
+			t.Errorf("FlushBuffers(%q): expected error", path)
+		}
+	}
+}
+
 func TestMBR(t *testing.T) {
 	t.Parallel()
 

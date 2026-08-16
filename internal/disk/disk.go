@@ -33,6 +33,10 @@ const cmdLsblk = "lsblk"
 // shift when drives are added or removed.
 const lsblkFields = "NAME,SIZE,FSTYPE,PARTTYPENAME,LABEL,UUID,PARTLABEL,PARTUUID,MOUNTPOINT,TYPE"
 
+// devPathRE matches a device path under /dev, allowing the extra path segment a
+// device-mapper or LVM node carries (e.g. "/dev/mapper/vg-lv").
+var devPathRE = regexp.MustCompile(`^/dev/[a-zA-Z0-9_.:+-]+(/[a-zA-Z0-9_.:+-]+)*$`)
+
 // drivePathRE matches a persistent whole-drive symlink under /dev/disk/by-*/.
 // The same shape is enforced when a profile is validated (see
 // config.driveByPathRE); it is repeated here because this package never trusts
@@ -240,6 +244,30 @@ func (i *Inspector) ResolveDrivePath(ctx context.Context, path string) (string, 
 	return name, nil
 }
 
+// FlushBuffers syncs and invalidates the kernel's cached buffers for a block
+// device (BLKFLSBUF, via `blockdev --flushbufs`), so that whoever reads the
+// device next sees what is actually stored on it.
+//
+// Imaging needs this: the page cache of a block device can hold pages older
+// than the device's contents, and a reader served from that cache silently
+// images stale bytes. Measured in the integration VM, a vfat partition imaged
+// without this flush produced an image with zeroed data regions in about a
+// quarter of the runs, and a buffered read of the device disagreed with an
+// O_DIRECT read of the same device in exactly those runs.
+func (i *Inspector) FlushBuffers(ctx context.Context, devicePath string) error {
+	if err := validateDevPath(devicePath); err != nil {
+		return err
+	}
+
+	if _, err := i.Runner.Run(ctx, run.Command{
+		Name: "blockdev", Args: []string{"--flushbufs", devicePath},
+	}); err != nil {
+		return fmt.Errorf("disk: flushing buffers of %s: %w", devicePath, err)
+	}
+
+	return nil
+}
+
 // MBR returns the first redo.MBRSize bytes of the drive (MBR plus GPT primary
 // area), read with dd, matching Redo Rescue's extract_mbr.
 func (i *Inspector) MBR(ctx context.Context, drive string) ([]byte, error) {
@@ -330,6 +358,17 @@ func firstLine(s string) string {
 func validateDevName(name string) error {
 	if !devNameRE.MatchString(name) {
 		return fmt.Errorf("%w %q", errInvalidDevName, name)
+	}
+
+	return nil
+}
+
+// validateDevPath guards a full device path, which unlike a bare device name may
+// contain further path segments (a device-mapper or LVM node, for example) but
+// must still live under /dev and never traverse out of it.
+func validateDevPath(path string) error {
+	if !devPathRE.MatchString(path) || strings.Contains(path, "..") {
+		return fmt.Errorf("%w %q", errInvalidDevPath, path)
 	}
 
 	return nil

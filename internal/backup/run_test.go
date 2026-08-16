@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -151,6 +152,44 @@ func TestBackupRunAutoDrive(t *testing.T) {
 
 	if rep.Drive != "sda" {
 		t.Errorf("auto-detected drive = %q, want sda", rep.Drive)
+	}
+}
+
+func TestBackupRunFlushesDeviceCacheBeforeImaging(t *testing.T) {
+	t.Parallel()
+
+	f := fakeRunner()
+	b := &Backup{Runner: f, Inspector: disk.New(f), Clock: fixedClock(), LogDir: t.TempDir()}
+
+	if _, err := b.Run(context.Background(), baseConfig(t.TempDir())); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	// Every partition's device cache must be invalidated, or partclone can
+	// image stale pages instead of what the device holds.
+	for _, want := range []string{"blockdev --flushbufs /dev/sda1", "blockdev --flushbufs /dev/sda2"} {
+		if !slices.Contains(f.CommandLines(), want) {
+			t.Errorf("missing %q in %v", want, f.CommandLines())
+		}
+	}
+}
+
+func TestBackupRunFlushFailureAbortsImaging(t *testing.T) {
+	t.Parallel()
+
+	f := fakeRunner()
+	f.Responses["blockdev --flushbufs /dev/sda1"] = run.FakeResponse{Err: errBoom}
+	b := &Backup{Runner: f, Inspector: disk.New(f), Clock: fixedClock(), LogDir: t.TempDir()}
+
+	// A device whose cache cannot be invalidated must not be imaged: the image
+	// would be silently unreliable. This also pins the ordering, since the
+	// pipeline never runs.
+	if _, err := b.Run(context.Background(), baseConfig(t.TempDir())); err == nil {
+		t.Fatal("expected error when the buffer flush fails")
+	}
+
+	if len(f.Pipelines) != 0 {
+		t.Errorf("imaging ran despite a failed flush: %d pipeline(s)", len(f.Pipelines))
 	}
 }
 

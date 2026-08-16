@@ -192,6 +192,15 @@ func (b *Backup) imagePartition(
 		}
 	}()
 
+	// Drop the kernel's cached view of the device now that the strategy has
+	// quiesced it, so partclone reads the device itself rather than pages that
+	// may predate what was written to it. Without this the image can silently
+	// contain stale (typically zeroed) regions; it is the read-side counterpart
+	// of the flush the restore path already needs.
+	if ferr := b.Inspector.FlushBuffers(ctx, prepared.Source); ferr != nil {
+		return ferr
+	}
+
 	pl := PartitionPipeline(part, prepared.Source, string(cfg.Compressor), cfg.SplitSize, logfile, cfg.Dest, id)
 	if perr := b.Runner.RunPipeline(ctx, pl.Stages); perr != nil {
 		return fmt.Errorf("backup: imaging %s: %w", part.Name, perr)
