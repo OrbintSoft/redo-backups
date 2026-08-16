@@ -1,4 +1,4 @@
 {"blockdevices":[{"name":"sda","size":"476.9G","type":"disk","children":[
-  {"name":"sda1","size":"127M","fstype":"vfat","parttypename":"EFI System","label":"ESP","type":"part"},
-  {"name":"sda2","size":"286M","fstype":"ext4","parttypename":"Linux filesystem","label":"boot","type":"part"}
+  {"name":"sda1","size":"127M","fstype":"vfat","parttypename":"EFI System","label":"ESP","uuid":"1234-ABCD","partlabel":"EFI system partition","partuuid":"00000000-0000-4000-8000-000000000001","type":"part"},
+  {"name":"sda2","size":"286M","fstype":"ext4","parttypename":"Linux filesystem","label":"boot","uuid":"00000000-0000-4000-8000-0000000000b0","partlabel":"boot","partuuid":"00000000-0000-4000-8000-000000000002","type":"part"}
 ]}]}

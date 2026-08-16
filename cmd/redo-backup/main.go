@@ -117,8 +117,8 @@ type runOverrides struct {
 func registerOverrides(fs *flag.FlagSet) runOverrides {
 	return runOverrides{
 		dest:        fs.String("dest", "", "override: destination directory"),
-		drive:       fs.String("drive", "", "override: target drive (or 'auto')"),
-		parts:       fs.String("parts", "", "override: partitions (comma/space list, or 'auto')"),
+		drive:       fs.String("drive", "", "override: target drive (name, /dev/disk/by-*/ link, or 'auto')"),
+		parts:       fs.String("parts", "", "override: partitions (names or LABEL=/UUID=/PARTLABEL=/PARTUUID=, or 'auto')"),
 		id:          fs.String("id", "", "override: backup id"),
 		notes:       fs.String("notes", "", "override: notes"),
 		compressor:  fs.String("compressor", "", "override: pigz|gzip"),

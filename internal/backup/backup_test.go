@@ -3,9 +3,11 @@
 package backup
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -60,8 +62,14 @@ func sampleDrive() *disk.Drive {
 		Name:  "sda",
 		Bytes: 512110190592,
 		Partitions: []disk.Partition{
-			{Name: "sda1", Bytes: 133169152, Size: "127M", Type: "EFI System", FS: "vfat", Label: "ESP"},
-			{Name: "sda2", Bytes: 299892736, Size: "286M", Type: "Linux filesystem", FS: "ext4", Label: "boot"},
+			{
+				Name: "sda1", Bytes: 133169152, Size: "127M", Type: "EFI System", FS: "vfat", Label: "ESP",
+				UUID: "1234-ABCD", PartLabel: "EFI system partition", PartUUID: "0000-0001",
+			},
+			{
+				Name: "sda2", Bytes: 299892736, Size: "286M", Type: "Linux filesystem", FS: "ext4", Label: "boot",
+				UUID: "00000000-0000-4000-8000-0000000000b0", PartLabel: "boot", PartUUID: "0000-0002",
+			},
 		},
 	}
 }
@@ -102,6 +110,100 @@ func TestSelectPartitionsMissing(t *testing.T) {
 	cfg := &config.Config{Parts: []string{"sda9"}}
 	if _, err := SelectPartitions(cfg, sampleDrive()); err == nil {
 		t.Fatal("expected error for missing partition")
+	}
+}
+
+func TestSelectPartitionsByStableRef(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]string{
+		"filesystem label":     "LABEL=boot",
+		"partition label":      "PARTLABEL=boot",
+		"filesystem uuid":      "UUID=00000000-0000-4000-8000-0000000000b0",
+		"partition uuid":       "PARTUUID=0000-0002",
+		"uuid case-insensiti.": "UUID=00000000-0000-4000-8000-0000000000B0",
+		"lowercase tag":        "label=boot",
+	}
+	for name, ref := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := &config.Config{Parts: []string{ref}}
+
+			got, err := SelectPartitions(cfg, sampleDrive())
+			if err != nil {
+				t.Fatalf("SelectPartitions(%q): %v", ref, err)
+			}
+
+			if len(got) != 1 || got[0].Name != "sda2" {
+				t.Errorf("SelectPartitions(%q) = %+v, want sda2", ref, got)
+			}
+		})
+	}
+}
+
+func TestSelectPartitionsMixedRefsKeepDriveOrder(t *testing.T) {
+	t.Parallel()
+
+	// References are given out of drive order and with a duplicate (the same
+	// partition named twice, once by label and once by kernel name).
+	cfg := &config.Config{Parts: []string{"LABEL=boot", "sda1", "sda2"}}
+
+	got, err := SelectPartitions(cfg, sampleDrive())
+	if err != nil {
+		t.Fatalf("SelectPartitions: %v", err)
+	}
+
+	names := make([]string, len(got))
+	for i, p := range got {
+		names[i] = p.Name
+	}
+
+	if !reflect.DeepEqual(names, []string{"sda1", "sda2"}) {
+		t.Errorf("selected = %v, want [sda1 sda2]", names)
+	}
+}
+
+func TestSelectPartitionsAmbiguousRef(t *testing.T) {
+	t.Parallel()
+
+	drive := sampleDrive()
+	// Two partitions of the same drive can carry the same filesystem label;
+	// imaging an arbitrary one of them would be a silent data hazard.
+	drive.Partitions[0].Label = "boot"
+
+	cfg := &config.Config{Parts: []string{"LABEL=boot"}}
+
+	_, err := SelectPartitions(cfg, drive)
+	if !errors.Is(err, errAmbiguousPartRef) {
+		t.Fatalf("err = %v, want errAmbiguousPartRef", err)
+	}
+}
+
+func TestSelectPartitionsUnmatchedRefListsCandidates(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.Config{Parts: []string{"LABEL=nope"}}
+
+	_, err := SelectPartitions(cfg, sampleDrive())
+	if !errors.Is(err, errPartitionNotOnDrive) {
+		t.Fatalf("err = %v, want errPartitionNotOnDrive", err)
+	}
+
+	// The error must show what could be used instead.
+	for _, want := range []string{"sda1", "LABEL=ESP", "PARTUUID=0000-0002"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %q", err, want)
+		}
+	}
+}
+
+func TestSelectPartitionsInvalidRef(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.Config{Parts: []string{"SERIAL=1234"}}
+	if _, err := SelectPartitions(cfg, sampleDrive()); err == nil {
+		t.Fatal("expected error for unknown reference tag")
 	}
 }
 

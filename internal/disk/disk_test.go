@@ -46,7 +46,7 @@ func TestFSTool(t *testing.T) {
 // fakeWithDrive returns a FakeRunner programmed with a typical small drive.
 func fakeWithDrive() *run.FakeRunner {
 	f := run.NewFakeRunner()
-	f.AddStdout("lsblk -J -o NAME,SIZE,FSTYPE,PARTTYPENAME,LABEL,MOUNTPOINT,TYPE -- /dev/sda", sampleLsblk)
+	f.AddStdout("lsblk -J -o NAME,SIZE,FSTYPE,PARTTYPENAME,LABEL,UUID,PARTLABEL,PARTUUID,MOUNTPOINT,TYPE -- /dev/sda", sampleLsblk)
 	f.AddStdout("blockdev --getsize64 /dev/sda", "512110190592\n")
 	f.AddStdout("blockdev --getsize64 /dev/sda1", "133169152\n")
 	f.AddStdout("blockdev --getsize64 /dev/sda2", "299892736\n")
@@ -73,8 +73,16 @@ func TestDrive(t *testing.T) {
 	}
 
 	want := []Partition{
-		{Name: "sda1", Bytes: 133169152, Size: "127M", Type: "EFI System", FS: "vfat", Label: "ESP"},
-		{Name: "sda2", Bytes: 299892736, Size: "286M", Type: "Linux filesystem", FS: "ext4", Label: "boot"},
+		{
+			Name: "sda1", Bytes: 133169152, Size: "127M", Type: "EFI System", FS: "vfat", Label: "ESP",
+			UUID: "1234-ABCD", PartLabel: "EFI system partition",
+			PartUUID: "00000000-0000-4000-8000-000000000001",
+		},
+		{
+			Name: "sda2", Bytes: 299892736, Size: "286M", Type: "Linux filesystem", FS: "ext4", Label: "boot",
+			UUID: "00000000-0000-4000-8000-0000000000b0", PartLabel: "boot",
+			PartUUID: "00000000-0000-4000-8000-000000000002",
+		},
 	}
 	for i, w := range want {
 		if d.Partitions[i] != w {
@@ -89,6 +97,71 @@ func TestDriveInvalidName(t *testing.T) {
 	insp := New(run.NewFakeRunner())
 	if _, err := insp.Drive(context.Background(), "../sda"); err == nil {
 		t.Fatal("expected error for invalid device name")
+	}
+}
+
+func TestResolveDrivePath(t *testing.T) {
+	t.Parallel()
+
+	const path = "/dev/disk/by-id/ata-MODEL_SERIAL"
+
+	// lsblk prints the drive first, then its partitions.
+	f := run.NewFakeRunner().AddStdout("lsblk -n -o KNAME -- "+path, "sda\nsda1\nsda2\n")
+
+	got, err := New(f).ResolveDrivePath(context.Background(), path)
+	if err != nil {
+		t.Fatalf("ResolveDrivePath: %v", err)
+	}
+
+	if got != "sda" {
+		t.Errorf("ResolveDrivePath = %q, want sda", got)
+	}
+}
+
+func TestResolveDrivePathRejectsForeignPaths(t *testing.T) {
+	t.Parallel()
+
+	insp := New(run.NewFakeRunner())
+
+	for _, path := range []string{"/etc/passwd", "/dev/sda", "/dev/disk/by-id/../../../etc/passwd", "sda"} {
+		if _, err := insp.ResolveDrivePath(context.Background(), path); err == nil {
+			t.Errorf("ResolveDrivePath(%q): expected error", path)
+		}
+	}
+}
+
+func TestFlushBuffers(t *testing.T) {
+	t.Parallel()
+
+	f := run.NewFakeRunner()
+	if err := New(f).FlushBuffers(context.Background(), "/dev/sda1"); err != nil {
+		t.Fatalf("FlushBuffers: %v", err)
+	}
+
+	if got := f.CommandLines(); len(got) != 1 || got[0] != "blockdev --flushbufs /dev/sda1" {
+		t.Errorf("commands = %v", got)
+	}
+}
+
+func TestFlushBuffersDeviceMapperPath(t *testing.T) {
+	t.Parallel()
+
+	// LVM and device-mapper nodes carry an extra path segment.
+	f := run.NewFakeRunner()
+	if err := New(f).FlushBuffers(context.Background(), "/dev/mapper/vg-lv"); err != nil {
+		t.Fatalf("FlushBuffers: %v", err)
+	}
+}
+
+func TestFlushBuffersRejectsBadPaths(t *testing.T) {
+	t.Parallel()
+
+	insp := New(run.NewFakeRunner())
+
+	for _, path := range []string{"sda1", "/etc/passwd", "/dev/../etc/passwd", "/dev/sda1; rm -rf /"} {
+		if err := insp.FlushBuffers(context.Background(), path); err == nil {
+			t.Errorf("FlushBuffers(%q): expected error", path)
+		}
 	}
 }
 

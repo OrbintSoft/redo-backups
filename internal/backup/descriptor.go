@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/OrbintSoft/redo-backups/internal/config"
@@ -18,6 +19,7 @@ import (
 // wrapping these with %w, keeping them matchable with errors.Is.
 var (
 	errPartitionNotOnDrive = errors.New("backup: requested partition not on drive")
+	errAmbiguousPartRef    = errors.New("backup: partition reference is ambiguous")
 	errNoPartitions        = errors.New("backup: no partitions to back up on drive")
 )
 
@@ -39,36 +41,113 @@ func FormatID(t time.Time) string {
 }
 
 // SelectPartitions returns the partitions to back up, in drive order. With
-// cfg.PartsAuto every partition is selected; otherwise only the named ones are,
-// and a missing name is an error.
+// cfg.PartsAuto every partition is selected; otherwise each configured
+// reference — a kernel device name or a stable identifier such as
+// LABEL=/UUID=/PARTLABEL=/PARTUUID= (see config.PartRef) — must match exactly
+// one partition of the drive.
 func SelectPartitions(cfg *config.Config, drive *disk.Drive) ([]disk.Partition, error) {
-	if cfg.PartsAuto() {
+	refs, err := cfg.PartRefs()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(refs) == 0 {
 		return drive.Partitions, nil
 	}
 
-	want := make(map[string]bool, len(cfg.Parts))
-	for _, p := range cfg.Parts {
-		want[p] = true
+	want := make(map[string]bool, len(refs))
+
+	for _, ref := range refs {
+		name, err := resolvePartRef(ref, drive)
+		if err != nil {
+			return nil, err
+		}
+
+		want[name] = true
 	}
 
-	var selected []disk.Partition
+	selected := make([]disk.Partition, 0, len(want))
 
 	for _, p := range drive.Partitions {
 		if want[p.Name] {
 			selected = append(selected, p)
-			delete(want, p.Name)
-		}
-	}
-
-	if len(want) > 0 {
-		for _, name := range cfg.Parts {
-			if want[name] {
-				return nil, fmt.Errorf("%w: %q (drive %q)", errPartitionNotOnDrive, name, drive.Name)
-			}
 		}
 	}
 
 	return selected, nil
+}
+
+// resolvePartRef returns the name of the one partition of drive that ref
+// matches. Matching nothing, or more than one partition (duplicate labels are
+// possible), is an error: silently imaging the wrong partition would produce a
+// backup that restores over the wrong data.
+func resolvePartRef(ref config.PartRef, drive *disk.Drive) (string, error) {
+	var matched []string
+
+	for _, p := range drive.Partitions {
+		if partitionMatches(p, ref) {
+			matched = append(matched, p.Name)
+		}
+	}
+
+	switch len(matched) {
+	case 1:
+		return matched[0], nil
+	case 0:
+		return "", fmt.Errorf("%w: %q (drive %q); available: %s",
+			errPartitionNotOnDrive, ref.String(), drive.Name, describePartitions(drive))
+	default:
+		return "", fmt.Errorf("%w: %q matches %s (drive %q)",
+			errAmbiguousPartRef, ref.String(), strings.Join(matched, ", "), drive.Name)
+	}
+}
+
+// partitionMatches reports whether p satisfies ref.
+func partitionMatches(p disk.Partition, ref config.PartRef) bool {
+	switch ref.Tag {
+	case config.TagName:
+		return p.Name == ref.Value
+	case config.TagLabel:
+		return p.Label == ref.Value
+	case config.TagPartLabel:
+		return p.PartLabel == ref.Value
+	case config.TagUUID:
+		// UUIDs are hexadecimal and different filesystems print them in
+		// different cases (lower for ext4, upper for vfat), so compare them
+		// case-insensitively; a label, by contrast, is matched verbatim.
+		return p.UUID != "" && strings.EqualFold(p.UUID, ref.Value)
+	case config.TagPartUUID:
+		return p.PartUUID != "" && strings.EqualFold(p.PartUUID, ref.Value)
+	default:
+		return false
+	}
+}
+
+// describePartitions lists the drive's partitions with the identifiers a
+// reference can match, so a failed lookup shows what could be written instead.
+func describePartitions(drive *disk.Drive) string {
+	descs := make([]string, 0, len(drive.Partitions))
+
+	for _, p := range drive.Partitions {
+		ids := []string{p.Name}
+		for _, id := range []struct {
+			tag config.PartTag
+			val string
+		}{
+			{config.TagLabel, p.Label},
+			{config.TagUUID, p.UUID},
+			{config.TagPartLabel, p.PartLabel},
+			{config.TagPartUUID, p.PartUUID},
+		} {
+			if id.val != "" {
+				ids = append(ids, config.PartRef{Tag: id.tag, Value: id.val}.String())
+			}
+		}
+
+		descs = append(descs, strings.Join(ids, " "))
+	}
+
+	return strings.Join(descs, "; ")
 }
 
 // BuildImage assembles the ".redo" descriptor from the gathered facts. The

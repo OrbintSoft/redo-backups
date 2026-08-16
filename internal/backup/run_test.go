@@ -8,6 +8,8 @@ import (
 	_ "embed"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -22,7 +24,7 @@ var lsblkSDA string
 
 func fakeRunner() *run.FakeRunner {
 	f := run.NewFakeRunner()
-	f.AddStdout("lsblk -J -o NAME,SIZE,FSTYPE,PARTTYPENAME,LABEL,MOUNTPOINT,TYPE -- /dev/sda", lsblkSDA)
+	f.AddStdout("lsblk -J -o NAME,SIZE,FSTYPE,PARTTYPENAME,LABEL,UUID,PARTLABEL,PARTUUID,MOUNTPOINT,TYPE -- /dev/sda", lsblkSDA)
 	f.AddStdout("blockdev --getsize64 /dev/sda", "512110190592\n")
 	f.AddStdout("blockdev --getsize64 /dev/sda1", "133169152\n")
 	f.AddStdout("blockdev --getsize64 /dev/sda2", "299892736\n")
@@ -102,6 +104,36 @@ func TestBackupRun(t *testing.T) {
 	}
 }
 
+func TestBackupRunDriveByPath(t *testing.T) {
+	t.Parallel()
+
+	const path = "/dev/disk/by-id/ata-MODEL_SERIAL"
+
+	f := fakeRunner()
+	f.AddStdout("lsblk -n -o KNAME -- "+path, "sda\nsda1\nsda2\n")
+
+	cfg := baseConfig(t.TempDir())
+	cfg.Drive = path
+	// Name the partitions the stable way too, so the whole profile is free of
+	// kernel names.
+	cfg.Parts = []string{"LABEL=boot"}
+
+	b := &Backup{Runner: f, Inspector: disk.New(f), Clock: fixedClock(), LogDir: t.TempDir()}
+
+	rep, err := b.Run(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if rep.Drive != "sda" {
+		t.Errorf("Drive = %q, want sda", rep.Drive)
+	}
+
+	if !reflect.DeepEqual(rep.Partitions, []string{"sda2"}) {
+		t.Errorf("Partitions = %v, want [sda2]", rep.Partitions)
+	}
+}
+
 func TestBackupRunAutoDrive(t *testing.T) {
 	t.Parallel()
 
@@ -120,6 +152,44 @@ func TestBackupRunAutoDrive(t *testing.T) {
 
 	if rep.Drive != "sda" {
 		t.Errorf("auto-detected drive = %q, want sda", rep.Drive)
+	}
+}
+
+func TestBackupRunFlushesDeviceCacheBeforeImaging(t *testing.T) {
+	t.Parallel()
+
+	f := fakeRunner()
+	b := &Backup{Runner: f, Inspector: disk.New(f), Clock: fixedClock(), LogDir: t.TempDir()}
+
+	if _, err := b.Run(context.Background(), baseConfig(t.TempDir())); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	// Every partition's device cache must be invalidated, or partclone can
+	// image stale pages instead of what the device holds.
+	for _, want := range []string{"blockdev --flushbufs /dev/sda1", "blockdev --flushbufs /dev/sda2"} {
+		if !slices.Contains(f.CommandLines(), want) {
+			t.Errorf("missing %q in %v", want, f.CommandLines())
+		}
+	}
+}
+
+func TestBackupRunFlushFailureAbortsImaging(t *testing.T) {
+	t.Parallel()
+
+	f := fakeRunner()
+	f.Responses["blockdev --flushbufs /dev/sda1"] = run.FakeResponse{Err: errBoom}
+	b := &Backup{Runner: f, Inspector: disk.New(f), Clock: fixedClock(), LogDir: t.TempDir()}
+
+	// A device whose cache cannot be invalidated must not be imaged: the image
+	// would be silently unreliable. This also pins the ordering, since the
+	// pipeline never runs.
+	if _, err := b.Run(context.Background(), baseConfig(t.TempDir())); err == nil {
+		t.Fatal("expected error when the buffer flush fails")
+	}
+
+	if len(f.Pipelines) != 0 {
+		t.Errorf("imaging ran despite a failed flush: %d pipeline(s)", len(f.Pipelines))
 	}
 }
 
