@@ -23,6 +23,9 @@ linters:
     # Deprecated since v2.12.0 and superseded by gomodguard_v2, which
     # `default: all` also enables; keeping the old one only prints a warning.
     - gomodguard
+    # Deprecated since v2.13.0 and superseded by exhaustruct_v5, which
+    # `default: all` also enables; keeping the old one only prints a warning.
+    - exhaustruct
     # The flagged globals (knownKeys, validConsistency, validCompressor,
     # fsToolRules) are immutable lookup tables, which Go cannot express as const;
     # a package-level var is the idiomatic representation.
@@ -45,8 +48,8 @@ linters:
         - fmt.Fprint
         - fmt.Fprintf
         - fmt.Fprintln
-    exhaustruct:
-      exclude:
+    exhaustruct_v5:
+      ignore-patterns:
         # run.Command.Stdin is an optional input stream omitted by the many
         # commands that take no stdin; requiring `Stdin: nil` on every command
         # literal is noise, not safety. Other structs stay fully enforced.
@@ -83,7 +86,7 @@ linters:
       - path: _test\.go
         linters:
           - lll
-          - exhaustruct
+          - exhaustruct_v5
           # Repeated literals across independent test cases (device names like
           # "sda2", filesystem names) are intentional and keep each case
           # self-contained; constant-extracting them hurts readability.
@@ -100,7 +103,7 @@ linters:
       # the test files above.
       - path: fake\.go
         linters:
-          - exhaustruct
+          - exhaustruct_v5
       # fsToolRules in fstool.go is a declarative lookup table; its filesystem
       # and partclone-tool strings are data, not duplication worth extracting.
       - path: fstool\.go
