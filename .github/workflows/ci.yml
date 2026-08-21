@@ -46,14 +46,14 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      # Go 1.26's experimental goroutine leak profile. GOEXPERIMENT arms it; the
-      # per-package TestMain in internal/leakcheck then fails the run if any
-      # goroutine is left blocked on an unreachable concurrency primitive. Drop
-      # the env once the profile is on by default (planned for Go 1.27).
+      # Go 1.27 registers the goroutineleak profile unconditionally (it needed
+      # GOEXPERIMENT=goroutineleakprofile while it was experimental in 1.26), so
+      # a plain `go test` arms it. The per-package TestMain in
+      # internal/leakcheck fails the run if any goroutine is left blocked on an
+      # unreachable concurrency primitive. This job keeps the check on a
+      # race-detector-free build, where the leak profile is unperturbed.
       - name: Test with leak detector
         run: go test ./...
-        env:
-          GOEXPERIMENT: goroutineleakprofile
 
   lint:
     name: golangci-lint
