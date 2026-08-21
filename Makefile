@@ -74,12 +74,12 @@ test: ## Run the unit tests
 race: ## Run the unit tests with the race detector
 	$(GO) test -race ./...
 
-# Go 1.26's experimental goroutine leak profile. The per-package TestMain in
-# internal/leakcheck fails the run if any goroutine is left blocked on an
-# unreachable concurrency primitive. The GOEXPERIMENT is what arms it; drop it
-# once the profile is on by default (planned for Go 1.27).
-leakcheck: ## Run the unit tests under the Go 1.26 goroutine leak detector
-	GOEXPERIMENT=goroutineleakprofile $(GO) test ./...
+# Go 1.27's built-in goroutine leak profile (experimental and gated behind
+# GOEXPERIMENT=goroutineleakprofile in 1.26, on by default since 1.27). The
+# per-package TestMain in internal/leakcheck fails the run if any goroutine is
+# left blocked on an unreachable concurrency primitive.
+leakcheck: ## Run the unit tests under the goroutine leak detector
+	$(GO) test ./...
 
 vet: ## Run go vet
 	$(GO) vet ./...
