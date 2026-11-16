@@ -49,7 +49,7 @@
   // the Mend App's run lands inside it (see the header note). The Dependency
   // Dashboard still lets us review/force individual updates from a checkbox.
   schedule: ["* * * * 3"],
-  dependencyDashboard: true,
+  dependencyDashboard: { enabled: true },
 
   labels: ["dependencies", "renovate"],
   semanticCommits: "enabled",
