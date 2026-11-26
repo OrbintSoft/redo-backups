@@ -104,7 +104,7 @@ run_layout() {
 			xfs)  mkfs.xfs -q -f "$part" ;;
 			btrfs) mkfs.btrfs -q -f "$part" ;;
 			*) die "unsupported test fs: $fs" ;;
-		esac
+		esac || { err "  mkfs.$fs $part failed"; return 1; }
 		wait_for_fstype "$part" "$fs"
 		local mp="$WORK/mnt_${name}_${idx}"
 		mkdir -p "$mp"
@@ -210,7 +210,7 @@ run_lvm_layout() {
 	local pv="${loop}p1"
 	wait_for_block "$pv" "$loop"
 
-	pvcreate -ff -y "$pv" >/dev/null
+	pvcreate -ff -y "$pv" >/dev/null || { err "  pvcreate $pv failed"; return 1; }
 	wait_for_fstype "$pv" LVM2_member
 	vgcreate "$vg" "$pv" >/dev/null
 	CLEANUP_VGS+=("$vg")
@@ -226,7 +226,7 @@ run_lvm_layout() {
 		i=$((i + 1))
 		dev="/dev/$vg/$lv"
 		wait_for_block "$dev" ""
-		mkfs.ext4 -q -F "$dev"
+		mkfs.ext4 -q -F "$dev" || { err "  mkfs.ext4 $dev failed"; return 1; }
 		wait_for_fstype "$dev" ext4
 		mp="$WORK/mnt_${name}_${i}"
 		mkdir -p "$mp"
@@ -356,7 +356,7 @@ run_fsfreeze_layout() {
 		case "$fs" in
 			vfat) mkfs.vfat "$part" >/dev/null ;;
 			ext4) mkfs.ext4 -q -F "$part" ;;
-		esac
+		esac || { err "  mkfs.$fs $part failed"; return 1; }
 		wait_for_fstype "$part" "$fs"
 		mp="$WORK/mnt_${name}_${idx}"
 		mkdir -p "$mp"
