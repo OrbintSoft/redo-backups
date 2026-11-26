@@ -7,7 +7,7 @@ rules of the work in [CLAUDE.md](CLAUDE.md).
 
 ---
 
-## 1 — A backup another tool can check and start  `[~]`
+## 1 — A backup another tool can check and start  `[x]`
 
 Asked on 2026-11-26. A tool that runs before a system update, such as
 emergup, checks that the last backup is recent enough and, when it is not,
@@ -30,14 +30,24 @@ worse. The caller offers to start the backup only for the first.
       - Either refusal is `backup.ErrDestUnavailable`; a check that cannot
         run (`findmnt` failing, say) is a different error. A missing
         destination directory is still created, but only after the check.
-- [ ] **1.2** `redo-backup check <profile> --max-age <age>`: exits with 0
+- [x] **1.2** `redo-backup check <profile> --max-age <age>`: exits with 0
       when the newest complete backup in the profile's destination is
       younger than the age, 1 when it is older or there is none, and 2 when
       the destination is not available, as 1.1 decides it. It prints the
       backup it found and its age.
       - The age comes from the descriptor's `timestamp`, not from the
         file's modification time, which a copy changes.
-      - To decide: how a complete backup is told from one that failed half
-        way, since the descriptor is written before the imaging; and how
-        the age is written (Go durations have no days: `20d` needs a parser
-        of its own).
+      - Decided, complete: `run` writes a completion record, `<id>.complete`,
+        once every partition is imaged and flushed to disk, listing the
+        set's files and their sizes; a set counts only while the record is
+        there and every file matches it. Sets made before the record
+        existed, or by Redo Rescue, do not count.
+      - Decided, same id: a run whose id already has a set in the
+        destination replaces it, withdrawing the record first and removing
+        each partition's earlier chunks before imaging it, since a shorter
+        image would leave the earlier set's last chunks for a restore to read.
+      - Decided, age: whole numbers with units `w`, `d`, `h`, `m` (minutes),
+        largest first, e.g. `20d`, `1d12h`; `config.ParseAge`.
+      - Decided, exit 3 for any other error, usage errors included, since
+        the CLI's usual usage code is 2, which `check` gives to an
+        unavailable destination.

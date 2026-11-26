@@ -249,23 +249,9 @@ func (b *Backup) resolveTarget(
 	ctx context.Context,
 	cfg *config.Config,
 ) (string, *disk.Drive, []disk.Partition, error) {
-	drive := cfg.Drive
-
-	switch {
-	case cfg.DriveAuto():
-		root, err := b.Inspector.RootDrive(ctx)
-		if err != nil {
-			return "", nil, nil, err
-		}
-
-		drive = root
-	case cfg.DriveIsPath():
-		name, err := b.Inspector.ResolveDrivePath(ctx, cfg.Drive)
-		if err != nil {
-			return "", nil, nil, err
-		}
-
-		drive = name
+	drive, err := b.resolveDrive(ctx, cfg)
+	if err != nil {
+		return "", nil, nil, err
 	}
 
 	d, err := b.Inspector.Drive(ctx, drive)
@@ -283,6 +269,21 @@ func (b *Backup) resolveTarget(
 	}
 
 	return drive, d, parts, nil
+}
+
+// resolveDrive returns the kernel name of the drive cfg names: the drive
+// hosting the root filesystem for "auto", the drive behind a /dev/disk/by-*/
+// link, or the name itself. Unlike resolveTarget it only runs findmnt and
+// lsblk, which need no root.
+func (b *Backup) resolveDrive(ctx context.Context, cfg *config.Config) (string, error) {
+	switch {
+	case cfg.DriveAuto():
+		return b.Inspector.RootDrive(ctx)
+	case cfg.DriveIsPath():
+		return b.Inspector.ResolveDrivePath(ctx, cfg.Drive)
+	default:
+		return cfg.Drive, nil
+	}
 }
 
 func (b *Backup) now() time.Time {
