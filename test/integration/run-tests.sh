@@ -105,6 +105,7 @@ run_layout() {
 			btrfs) mkfs.btrfs -q -f "$part" ;;
 			*) die "unsupported test fs: $fs" ;;
 		esac
+		wait_for_fstype "$part" "$fs"
 		local mp="$WORK/mnt_${name}_${idx}"
 		mkdir -p "$mp"
 		mount "$part" "$mp"
@@ -209,6 +210,7 @@ run_lvm_layout() {
 	wait_for_block "$pv" "$loop"
 
 	pvcreate -ff -y "$pv" >/dev/null
+	wait_for_fstype "$pv" LVM2_member
 	vgcreate "$vg" "$pv" >/dev/null
 	CLEANUP_VGS+=("$vg")
 	lvcreate -y -L 200M -n root "$vg" >/dev/null
@@ -224,6 +226,7 @@ run_lvm_layout() {
 		dev="/dev/$vg/$lv"
 		wait_for_block "$dev" ""
 		mkfs.ext4 -q -F "$dev"
+		wait_for_fstype "$dev" ext4
 		mp="$WORK/mnt_${name}_${i}"
 		mkdir -p "$mp"
 		mount "$dev" "$mp"
@@ -352,6 +355,7 @@ run_fsfreeze_layout() {
 			vfat) mkfs.vfat "$part" >/dev/null ;;
 			ext4) mkfs.ext4 -q -F "$part" ;;
 		esac
+		wait_for_fstype "$part" "$fs"
 		mp="$WORK/mnt_${name}_${idx}"
 		mkdir -p "$mp"
 		mount "$part" "$mp"

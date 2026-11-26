@@ -28,6 +28,26 @@ wait_for_block() {
 	[ -b "$dev" ] || die "block device $dev never appeared"
 }
 
+# wait_for_fstype waits until lsblk reports filesystem type $2 for block device
+# $1, asking udev to re-probe the device on each try. lsblk reads the type from
+# the udev database, which lags a fresh mkfs or pvcreate: a loop device reused
+# from an earlier layout can still show that layout's type (LVM2_member where
+# vfat now is, say), and the backup would then treat the partition as that —
+# for fsfreeze, by trying to freeze a vfat filesystem.
+wait_for_fstype() {
+	local dev="$1" want="$2" got="" _
+	for _ in $(seq 1 30); do
+		got="$(lsblk -d -n -o FSTYPE "$dev" 2>/dev/null || true)"
+		[ "$got" = "$want" ] && return 0
+		if command -v udevadm >/dev/null 2>&1; then
+			udevadm trigger --action=change "$dev" 2>/dev/null || true
+			udevadm settle --timeout=2 2>/dev/null || true
+		fi
+		sleep 0.5
+	done
+	die "lsblk reports filesystem type '$got' for $dev, want '$want'"
+}
+
 # activate_vg brings volume group $1 online and waits until every named logical
 # volume ($2, $3, ...) has a device node. LVM autoactivation is driven by udev
 # events, which loop devices don't emit, so after a raw PV restore we rescan and
