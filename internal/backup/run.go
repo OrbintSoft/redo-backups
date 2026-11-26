@@ -39,8 +39,9 @@ type Report struct {
 
 // Run performs the backup described by cfg: it resolves the drive, refuses a
 // destination that is not available (ErrDestUnavailable), gathers the MBR and
-// partition table, writes the ".redo" descriptor, and images each selected
-// partition.
+// partition table, writes the ".redo" descriptor, images each selected
+// partition, and finally writes the set's completion record ("<id>.complete").
+// A set already in the destination under the same id is replaced.
 func (b *Backup) Run(ctx context.Context, cfg *config.Config) (*Report, error) {
 	strategy, err := snapshot.For(cfg, b.Runner)
 	if err != nil {
@@ -80,25 +81,23 @@ func (b *Backup) Run(ctx context.Context, cfg *config.Config) (*Report, error) {
 	img := BuildImage(cfg, d, parts, id, timestamp, mbr, sfd)
 
 	// Write the descriptor before imaging, matching Redo Rescue's order.
-	descPath, err := writeDescriptorIn(cfg.Dest, img)
+	set, descPath, err := startSet(cfg.Dest, img)
 	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = set.Close() }()
+
+	if err := b.imageAll(ctx, strategy, cfg, set, parts, id); err != nil {
 		return nil, err
 	}
 
-	logDir, cleanup, err := b.resolveLogDir()
-	if err != nil {
+	// Only now, with every partition imaged, is the set known to be complete.
+	if _, err := writeCompletion(set, id, parts); err != nil {
 		return nil, err
 	}
-	defer cleanup()
 
 	report := &Report{Drive: drive, ID: id, DescriptorPath: descPath, Partitions: nil}
-
 	for _, part := range parts {
-		logfile := filepath.Join(logDir, part.Name+".log")
-		if err := b.imagePartition(ctx, strategy, cfg, part, logfile, id); err != nil {
-			return nil, err
-		}
-
 		report.Partitions = append(report.Partitions, part.Name)
 	}
 
@@ -170,6 +169,36 @@ func (b *Backup) Plan(ctx context.Context, cfg *config.Config) (*Plan, error) {
 	}
 
 	return plan, nil
+}
+
+// imageAll images each partition in turn, first removing the chunks an earlier
+// set with the same id left for it.
+func (b *Backup) imageAll(
+	ctx context.Context,
+	strategy snapshot.Strategy,
+	cfg *config.Config,
+	set *os.Root,
+	parts []disk.Partition,
+	id string,
+) error {
+	logDir, cleanup, err := b.resolveLogDir()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	for _, part := range parts {
+		if err := removeChunks(set, id, part.Name); err != nil {
+			return err
+		}
+
+		logfile := filepath.Join(logDir, part.Name+".log")
+		if err := b.imagePartition(ctx, strategy, cfg, part, logfile, id); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // imagePartition prepares the partition with the consistency strategy, runs the

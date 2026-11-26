@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 
 	"github.com/OrbintSoft/redo-backups/internal/config"
-	"github.com/OrbintSoft/redo-backups/internal/redo"
 )
 
 // destDirPerm restricts the backup destination directory to owner and group. It
@@ -61,16 +60,6 @@ func (b *Backup) checkDest(ctx context.Context, cfg *config.Config, drive string
 	}
 
 	return nil
-}
-
-// writeDescriptorIn creates the destination, which checkDest has accepted, and
-// writes the descriptor into it, returning the descriptor's path.
-func writeDescriptorIn(dest string, img *redo.Image) (string, error) {
-	if err := os.MkdirAll(dest, destDirPerm); err != nil {
-		return "", fmt.Errorf("backup: creating destination %s: %w", dest, err)
-	}
-
-	return WriteDescriptor(dest, img)
 }
 
 // nearestExisting returns path itself when it exists, otherwise its closest

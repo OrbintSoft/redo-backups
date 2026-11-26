@@ -138,6 +138,7 @@ EOF
 	ls -la "$dest" | sed 's/^/[itest]     /'
 
 	[ -f "$dest/$name.redo" ] || { err "  descriptor $dest/$name.redo missing"; return 1; }
+	[ -f "$dest/$name.complete" ] || { err "  completion record $dest/$name.complete missing"; return 1; }
 	if ! ls "$dest/${name}_"*.img >/dev/null 2>&1; then
 		err "  backup produced no .img chunks (check partclone/pigz/split in the VM)"
 		return 1
@@ -253,6 +254,7 @@ EOF
 	fi
 	log "  backup produced:"
 	ls -la "$dest" | sed 's/^/[itest]     /'
+	[ -f "$dest/$name.complete" ] || { err "  completion record $dest/$name.complete missing"; return 1; }
 	if ! ls "$dest/${name}_"*.img >/dev/null 2>&1; then
 		err "  backup produced no .img chunks"
 		return 1
@@ -380,6 +382,7 @@ EOF
 	fi
 	log "  backup produced:"
 	ls -la "$dest" | sed 's/^/[itest]     /'
+	[ -f "$dest/$name.complete" ] || { err "  completion record $dest/$name.complete missing"; return 1; }
 	if ! ls "$dest/${name}_"*.img >/dev/null 2>&1; then
 		err "  backup produced no .img chunks"
 		return 1

@@ -32,6 +32,7 @@ func fakeRunner() *run.FakeRunner {
 		Result: run.Result{Stdout: bytes.Repeat([]byte{0}, redo.MBRSize)},
 	}
 	f.AddStdout("sfdisk --dump /dev/sda", "label: gpt\ndevice: /dev/sda\n")
+	f.OnPipeline = splitChunks(1)
 
 	return f
 }

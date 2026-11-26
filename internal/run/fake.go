@@ -26,6 +26,11 @@ type FakeRunner struct {
 
 	// PipelineErr, if set, is returned by every RunPipeline call.
 	PipelineErr error
+
+	// OnPipeline, if set, is called with each pipeline RunPipeline records,
+	// standing in for the side effects of the real commands (split writing its
+	// chunks, say). Its error, if any, is returned instead of PipelineErr.
+	OnPipeline func(cmds []Command) error
 }
 
 // FakeResponse is the canned outcome for a single command.
@@ -65,15 +70,25 @@ func (f *FakeRunner) Run(_ context.Context, cmd Command) (Result, error) {
 	return Result{}, nil
 }
 
-// RunPipeline records the pipeline and returns PipelineErr (nil by default).
+// RunPipeline records the pipeline, calls OnPipeline if set, and returns
+// PipelineErr (nil by default).
 func (f *FakeRunner) RunPipeline(_ context.Context, cmds []Command) error {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 
 	clone := append([]Command(nil), cmds...)
 	f.Pipelines = append(f.Pipelines, clone)
+	hook, perr := f.OnPipeline, f.PipelineErr
 
-	return f.PipelineErr
+	f.mu.Unlock()
+
+	// The hook runs unlocked, so it may inspect the runner itself.
+	if hook != nil {
+		if err := hook(clone); err != nil {
+			return err
+		}
+	}
+
+	return perr
 }
 
 // CommandLines returns the String() form of every recorded call, in order.

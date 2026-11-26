@@ -141,7 +141,9 @@ sudo ./redo-backup run example
 ```
 
 On success the destination directory contains `<id>.redo` and the `<id>_<dev>_NNN.img`
-chunks, restorable from the Redo Rescue live CD.
+chunks, restorable from the Redo Rescue live CD, and the completion record `<id>.complete`,
+written last: a set without it is one whose run did not finish. A run with an id that
+already has a set in the destination replaces that set.
 
 ## Commands
 
