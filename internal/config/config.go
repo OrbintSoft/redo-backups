@@ -40,6 +40,11 @@ const auto = "auto"
 type Config struct {
 	// Dest is the destination directory for the backup (required).
 	Dest string
+	// DestMount, when set, is the mount point the destination must be on: a
+	// backup is refused unless the filesystem holding Dest is the one mounted
+	// exactly there, which tells a backup disk that is not mounted from one
+	// that is. Empty means no mount point is required.
+	DestMount string
 	// Drive is the target drive name without "/dev/" (e.g. "sda"), or "auto"
 	// to detect the drive hosting the root filesystem.
 	Drive string
@@ -71,6 +76,7 @@ func (c *Config) PartsAuto() bool { return len(c.Parts) == 0 }
 func defaults() *Config {
 	return &Config{
 		Dest:        "",
+		DestMount:   "",
 		Drive:       auto,
 		Parts:       nil,
 		ID:          "",

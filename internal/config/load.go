@@ -165,63 +165,33 @@ func unquote(s string) string {
 	return s
 }
 
-// knownKeys lists every recognized configuration key. Unknown keys are rejected
-// so typos surface immediately instead of being silently ignored.
-var knownKeys = map[string]bool{
-	"dest":        true,
-	"drive":       true,
-	"parts":       true,
-	"id":          true,
-	"notes":       true,
-	"version":     true,
-	"compressor":  true,
-	"split_size":  true,
-	"consistency": true,
+// setters maps every recognized configuration key to the Config field it sets.
+// Unknown keys are rejected so typos surface immediately instead of being
+// silently ignored.
+var setters = map[string]func(cfg *Config, value string){
+	"dest":        func(cfg *Config, v string) { cfg.Dest = v },
+	"dest_mount":  func(cfg *Config, v string) { cfg.DestMount = v },
+	"drive":       func(cfg *Config, v string) { cfg.Drive = v },
+	"parts":       func(cfg *Config, v string) { cfg.Parts = ParseParts(v) },
+	"id":          func(cfg *Config, v string) { cfg.ID = v },
+	"notes":       func(cfg *Config, v string) { cfg.Notes = v },
+	"version":     func(cfg *Config, v string) { cfg.Version = v },
+	"compressor":  func(cfg *Config, v string) { cfg.Compressor = Compressor(v) },
+	"split_size":  func(cfg *Config, v string) { cfg.SplitSize = v },
+	"consistency": func(cfg *Config, v string) { cfg.Consistency = Consistency(v) },
 }
 
 // fromMap builds a Config from merged key/value pairs, starting from defaults.
 func fromMap(kv map[string]string) (*Config, error) {
-	for k := range kv {
-		if !knownKeys[k] {
+	cfg := defaults()
+
+	for k, v := range kv {
+		set, ok := setters[k]
+		if !ok {
 			return nil, fmt.Errorf("%w %q", errUnknownKey, k)
 		}
-	}
 
-	cfg := defaults()
-	if v, ok := kv["dest"]; ok {
-		cfg.Dest = v
-	}
-
-	if v, ok := kv["drive"]; ok {
-		cfg.Drive = v
-	}
-
-	if v, ok := kv["parts"]; ok {
-		cfg.Parts = ParseParts(v)
-	}
-
-	if v, ok := kv["id"]; ok {
-		cfg.ID = v
-	}
-
-	if v, ok := kv["notes"]; ok {
-		cfg.Notes = v
-	}
-
-	if v, ok := kv["version"]; ok {
-		cfg.Version = v
-	}
-
-	if v, ok := kv["compressor"]; ok {
-		cfg.Compressor = Compressor(v)
-	}
-
-	if v, ok := kv["split_size"]; ok {
-		cfg.SplitSize = v
-	}
-
-	if v, ok := kv["consistency"]; ok {
-		cfg.Consistency = Consistency(v)
+		set(cfg, v)
 	}
 
 	return cfg, nil
