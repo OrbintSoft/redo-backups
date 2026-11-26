@@ -88,8 +88,61 @@ test_activate_vg_timeout() {
 	fi
 }
 
+# wait_for_fstype re-probes through udev until lsblk stops reporting the type a
+# reused loop device had before, then returns.
+test_wait_for_fstype_success() {
+	local out
+	out="$(
+		# shellcheck source=lib.sh
+		source "$LIB"
+		triggers=0
+		# lsblk runs in a command substitution, so its call count lives in a
+		# file; the stale type from an earlier layout clears on the 3rd look.
+		looks="$(mktemp)"; echo 0 > "$looks"
+		lsblk() {
+			local n; n=$(($(cat "$looks") + 1)); echo "$n" > "$looks"
+			if [ "$n" -ge 3 ]; then echo vfat; else echo LVM2_member; fi
+		}
+		udevadm() { [ "$1" = trigger ] && triggers=$((triggers + 1)); return 0; }
+		sleep() { :; }
+		wait_for_fstype /dev/loop9p1 vfat && echo "SETTLED triggers=$triggers"
+		rm -f "$looks"
+	)"
+	if [[ "$out" == "SETTLED triggers=2" ]]; then
+		echo "PASS: wait_for_fstype success-after-reprobe"
+	else
+		echo "FAIL: wait_for_fstype did not return once the type appeared ($out)"; fail=1
+	fi
+}
+
+# wait_for_fstype dies (exit 1), naming the type it last saw, when lsblk never
+# reports the wanted one.
+test_wait_for_fstype_timeout() {
+	local out rc
+	out="$( {
+		# shellcheck source=lib.sh
+		source "$LIB"
+		lsblk() { echo LVM2_member; }
+		udevadm() { :; }; sleep() { :; }
+		wait_for_fstype /dev/loop9p1 vfat
+		echo REACHED-PAST-DIE
+	} 2>&1 )"
+	rc=$?
+	if [ "$rc" -eq 1 ] \
+		&& [[ "$out" != *REACHED-PAST-DIE* ]] \
+		&& [[ "$out" == *"type 'LVM2_member' for /dev/loop9p1, want 'vfat'"* ]]; then
+		echo "PASS: wait_for_fstype timeout dies naming the stale type"
+	else
+		echo "FAIL: wait_for_fstype timeout behaviour (rc=$rc)"
+		printf '%s\n' "$out" | sed 's/^/  > /'
+		fail=1
+	fi
+}
+
 test_activate_vg_success
 test_activate_vg_timeout
+test_wait_for_fstype_success
+test_wait_for_fstype_timeout
 
 echo
 if [ "$fail" -eq 0 ]; then
