@@ -139,8 +139,60 @@ test_wait_for_fstype_timeout() {
 	fi
 }
 
+# wait_for_block keeps rescanning while the node exists but the partition behind
+# it cannot be opened yet, and returns once it can.
+test_wait_for_block_until_usable() {
+	local out
+	out="$(
+		# shellcheck source=lib.sh
+		source "$LIB"
+		rescans=0
+		# blockdev runs in a command substitution, so its call count lives in a
+		# file; the device opens on the 3rd try (ENXIO before that).
+		opens="$(mktemp)"; echo 0 > "$opens"
+		blockdev() {
+			local n; n=$(($(cat "$opens") + 1)); echo "$n" > "$opens"
+			[ "$n" -ge 3 ] && echo 1048576
+		}
+		partprobe() { :; }; partx() { rescans=$((rescans + 1)); }
+		udevadm() { :; }; sleep() { :; }
+		wait_for_block "$BDEV" /dev/loop9 && echo "USABLE rescans=$rescans"
+		rm -f "$opens"
+	)"
+	if [[ "$out" == "USABLE rescans=2" ]]; then
+		echo "PASS: wait_for_block waits until the device opens"
+	else
+		echo "FAIL: wait_for_block did not wait for the device to open ($out)"; fail=1
+	fi
+}
+
+# wait_for_block dies (exit 1) when the device never opens, although its node
+# exists.
+test_wait_for_block_never_usable() {
+	local out rc
+	out="$( {
+		# shellcheck source=lib.sh
+		source "$LIB"
+		blockdev() { return 1; }
+		partprobe() { :; }; partx() { :; }; udevadm() { :; }; sleep() { :; }
+		wait_for_block "$BDEV" /dev/loop9
+		echo REACHED-PAST-DIE
+	} 2>&1 )"
+	rc=$?
+	if [ "$rc" -eq 1 ] && [[ "$out" != *REACHED-PAST-DIE* ]] \
+		&& [[ "$out" == *"$BDEV never became usable"* ]]; then
+		echo "PASS: wait_for_block dies when the device never opens"
+	else
+		echo "FAIL: wait_for_block never-usable behaviour (rc=$rc)"
+		printf '%s\n' "$out" | sed 's/^/  > /'
+		fail=1
+	fi
+}
+
 test_activate_vg_success
 test_activate_vg_timeout
+test_wait_for_block_until_usable
+test_wait_for_block_never_usable
 test_wait_for_fstype_success
 test_wait_for_fstype_timeout
 

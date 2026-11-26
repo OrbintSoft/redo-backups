@@ -13,11 +13,14 @@ need_root() {
 
 # wait_for_block waits until block device $1 exists, re-reading the partition
 # table of its parent loop device $2 each try. Loop-device partition nodes can
-# lag the partition-table write, especially on systems without udev.
+# lag the partition-table write, especially on systems without udev; and a node
+# can be there before the kernel can open the partition behind it, so mkfs on
+# it fails with "No such device or address". The device is therefore opened
+# (block_usable), not only looked for.
 wait_for_block() {
 	local dev="$1" loop="$2" _
 	for _ in $(seq 1 30); do
-		[ -b "$dev" ] && return 0
+		block_usable "$dev" && return 0
 		if [ -n "$loop" ]; then
 			partprobe "$loop" 2>/dev/null || true
 			partx -u "$loop" 2>/dev/null || true
@@ -25,7 +28,16 @@ wait_for_block() {
 		command -v udevadm >/dev/null 2>&1 && udevadm settle --timeout=2 2>/dev/null || true
 		sleep 0.5
 	done
-	[ -b "$dev" ] || die "block device $dev never appeared"
+	block_usable "$dev" || die "block device $dev never became usable"
+}
+
+# block_usable reports whether block device $1 exists and opens with a
+# non-zero size.
+block_usable() {
+	local size
+	[ -b "$1" ] || return 1
+	size="$(blockdev --getsize64 "$1" 2>/dev/null)" || return 1
+	[ "${size:-0}" -gt 0 ]
 }
 
 # wait_for_fstype waits until lsblk reports filesystem type $2 for block device
