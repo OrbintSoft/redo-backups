@@ -56,7 +56,7 @@ func TestBackupRun(t *testing.T) {
 	t.Parallel()
 
 	f := fakeRunner()
-	dest := t.TempDir()
+	dest := onBackupDisk(f, t.TempDir())
 	b := &Backup{Runner: f, Inspector: disk.New(f), Clock: fixedClock(), LogDir: t.TempDir()}
 
 	rep, err := b.Run(context.Background(), baseConfig(dest))
@@ -112,7 +112,7 @@ func TestBackupRunDriveByPath(t *testing.T) {
 	f := fakeRunner()
 	f.AddStdout("lsblk -n -o KNAME -- "+path, "sda\nsda1\nsda2\n")
 
-	cfg := baseConfig(t.TempDir())
+	cfg := baseConfig(onBackupDisk(f, t.TempDir()))
 	cfg.Drive = path
 	// Name the partitions the stable way too, so the whole profile is free of
 	// kernel names.
@@ -141,7 +141,7 @@ func TestBackupRunAutoDrive(t *testing.T) {
 	f.AddStdout("findmnt -n -o SOURCE /", "/dev/sda2\n")
 	f.AddStdout("lsblk -n -o PKNAME /dev/sda2", "sda\n")
 
-	cfg := baseConfig(t.TempDir())
+	cfg := baseConfig(onBackupDisk(f, t.TempDir()))
 	cfg.Drive = "auto"
 	b := &Backup{Runner: f, Inspector: disk.New(f), Clock: fixedClock(), LogDir: t.TempDir()}
 
@@ -161,7 +161,7 @@ func TestBackupRunFlushesDeviceCacheBeforeImaging(t *testing.T) {
 	f := fakeRunner()
 	b := &Backup{Runner: f, Inspector: disk.New(f), Clock: fixedClock(), LogDir: t.TempDir()}
 
-	if _, err := b.Run(context.Background(), baseConfig(t.TempDir())); err != nil {
+	if _, err := b.Run(context.Background(), baseConfig(onBackupDisk(f, t.TempDir()))); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -184,7 +184,7 @@ func TestBackupRunFlushFailureAbortsImaging(t *testing.T) {
 	// A device whose cache cannot be invalidated must not be imaged: the image
 	// would be silently unreliable. This also pins the ordering, since the
 	// pipeline never runs.
-	if _, err := b.Run(context.Background(), baseConfig(t.TempDir())); err == nil {
+	if _, err := b.Run(context.Background(), baseConfig(onBackupDisk(f, t.TempDir()))); err == nil {
 		t.Fatal("expected error when the buffer flush fails")
 	}
 
@@ -197,7 +197,7 @@ func TestBackupPlan(t *testing.T) {
 	t.Parallel()
 
 	f := fakeRunner()
-	dest := t.TempDir()
+	dest := onBackupDisk(f, t.TempDir())
 	b := &Backup{Runner: f, Inspector: disk.New(f), Clock: fixedClock(), LogDir: t.TempDir()}
 
 	plan, err := b.Plan(context.Background(), baseConfig(dest))
@@ -231,7 +231,7 @@ func TestBackupRunConsistencyUnsupported(t *testing.T) {
 	t.Parallel()
 
 	f := fakeRunner()
-	cfg := baseConfig(t.TempDir())
+	cfg := baseConfig(onBackupDisk(f, t.TempDir()))
 	cfg.Consistency = "btrfs-snapshot" // removed/unknown strategy
 	b := &Backup{Runner: f, Inspector: disk.New(f), Clock: fixedClock(), LogDir: t.TempDir()}
 
@@ -247,7 +247,7 @@ func TestBackupRunPipelineFailure(t *testing.T) {
 	f.PipelineErr = errBoom
 	b := &Backup{Runner: f, Inspector: disk.New(f), Clock: fixedClock(), LogDir: t.TempDir()}
 
-	if _, err := b.Run(context.Background(), baseConfig(t.TempDir())); err == nil {
+	if _, err := b.Run(context.Background(), baseConfig(onBackupDisk(f, t.TempDir()))); err == nil {
 		t.Fatal("expected error when a pipeline fails")
 	}
 }

@@ -104,6 +104,7 @@ func dispatch(args []string, stdout, stderr *os.File) int {
 // value is applied to the loaded config only if it was explicitly passed.
 type runOverrides struct {
 	dest        *string
+	destMount   *string
 	drive       *string
 	parts       *string
 	id          *string
@@ -117,6 +118,7 @@ type runOverrides struct {
 func registerOverrides(fs *flag.FlagSet) runOverrides {
 	return runOverrides{
 		dest:        fs.String("dest", "", "override: destination directory"),
+		destMount:   fs.String("dest-mount", "", "override: mount point the destination must be on ('' for none)"),
 		drive:       fs.String("drive", "", "override: target drive (name, /dev/disk/by-*/ link, or 'auto')"),
 		parts:       fs.String("parts", "", "override: partitions (names or LABEL=/UUID=/PARTLABEL=/PARTUUID=, or 'auto')"),
 		id:          fs.String("id", "", "override: backup id"),
@@ -133,6 +135,8 @@ func (o runOverrides) applyTo(fs *flag.FlagSet, cfg *config.Config) {
 		switch fl.Name {
 		case "dest":
 			cfg.Dest = *o.dest
+		case "dest-mount":
+			cfg.DestMount = *o.destMount
 		case "drive":
 			cfg.Drive = *o.drive
 		case "parts":
@@ -298,7 +302,13 @@ func printConfig(w *os.File, cfg *config.Config) {
 		id = "(derived from date)"
 	}
 
+	destMount := cfg.DestMount
+	if destMount == "" {
+		destMount = "(none)"
+	}
+
 	fmt.Fprintf(w, "dest:         %s\n", cfg.Dest)
+	fmt.Fprintf(w, "dest_mount:   %s\n", destMount)
 	fmt.Fprintf(w, "drive:        %s\n", cfg.Drive)
 	fmt.Fprintf(w, "parts:        %s\n", parts)
 	fmt.Fprintf(w, "id:           %s\n", id)

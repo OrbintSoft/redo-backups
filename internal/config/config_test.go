@@ -36,6 +36,10 @@ func TestLoadDefaults(t *testing.T) {
 		t.Errorf("unexpected defaults: %+v", cfg)
 	}
 
+	if cfg.DestMount != "" {
+		t.Errorf("DestMount = %q, want none by default", cfg.DestMount)
+	}
+
 	if cfg.Version != "4.0.0" {
 		t.Errorf("Version = %q", cfg.Version)
 	}
@@ -98,6 +102,54 @@ func TestDropInOverride(t *testing.T) {
 	}
 }
 
+func TestLoadDestMount(t *testing.T) {
+	t.Parallel()
+
+	for _, conf := range []string{
+		"dest = /mnt/backup/host\ndest_mount = /mnt/backup\n",
+		"dest = /mnt/backup\ndest_mount = /mnt/backup/\n", // the mount point itself
+		"dest = /mnt/backup/./host\ndest_mount = /mnt/backup\n",
+	} {
+		fsys := fstest.MapFS{"p.conf": &fstest.MapFile{Data: []byte(conf)}}
+
+		cfg, err := LoadFS(fsys, "p")
+		if err != nil {
+			t.Errorf("LoadFS(%q): %v", conf, err)
+
+			continue
+		}
+
+		if cfg.DestMount == "" {
+			t.Errorf("LoadFS(%q): DestMount not set", conf)
+		}
+	}
+}
+
+func TestPathWithin(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		path, dir string
+		want      bool
+	}{
+		{"/mnt/backup", "/mnt/backup", true},
+		{"/mnt/backup/host", "/mnt/backup", true},
+		{"/mnt/backup/host", "/mnt/backup/", true},
+		{"/mnt/backup/host", "/", true},
+		{"/mnt/backup2", "/mnt/backup", false},
+		{"/mnt", "/mnt/backup", false},
+		{"/mnt/backup/../other", "/mnt/backup", false},
+		{"/mnt/backup/..data", "/mnt/backup", true},
+		{"backup", "/mnt/backup", false},
+	}
+
+	for _, tc := range cases {
+		if got := pathWithin(tc.path, tc.dir); got != tc.want {
+			t.Errorf("pathWithin(%q, %q) = %v, want %v", tc.path, tc.dir, got, tc.want)
+		}
+	}
+}
+
 func TestMissingProfile(t *testing.T) {
 	t.Parallel()
 
@@ -110,14 +162,19 @@ func TestErrors(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]string{
-		"missing dest":    "drive = sda\n",
-		"unknown key":     "dest = /a\nbogus = 1\n",
-		"bad drive":       "dest = /a\ndrive = sd/a\n",
-		"bad consistency": "dest = /a\nconsistency = magic\n",
-		"bad compressor":  "dest = /a\ncompressor = lz4\n",
-		"bad split_size":  "dest = /a\nsplit_size = big\n",
-		"bad part":        "dest = /a\nparts = sda1 sd!2\n",
-		"missing equals":  "dest = /a\njunkline\n",
+		"missing dest":              "drive = sda\n",
+		"unknown key":               "dest = /a\nbogus = 1\n",
+		"bad drive":                 "dest = /a\ndrive = sd/a\n",
+		"bad consistency":           "dest = /a\nconsistency = magic\n",
+		"bad compressor":            "dest = /a\ncompressor = lz4\n",
+		"bad split_size":            "dest = /a\nsplit_size = big\n",
+		"bad part":                  "dest = /a\nparts = sda1 sd!2\n",
+		"missing equals":            "dest = /a\njunkline\n",
+		"relative dest_mount":       "dest = /mnt/backup/host\ndest_mount = mnt/backup\n",
+		"dest outside dest_mount":   "dest = /srv/backup\ndest_mount = /mnt/backup\n",
+		"dest beside dest_mount":    "dest = /mnt/backup2/host\ndest_mount = /mnt/backup\n",
+		"relative dest, dest_mount": "dest = backup/host\ndest_mount = /mnt/backup\n",
+		"dest above dest_mount":     "dest = /mnt\ndest_mount = /mnt/backup\n",
 	}
 	for name, conf := range cases {
 		t.Run(name, func(t *testing.T) {

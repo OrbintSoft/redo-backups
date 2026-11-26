@@ -70,6 +70,20 @@ mixing the two is allowed. Each reference must match **exactly one** partition o
 drive: a reference matching none — or several, as duplicate labels do — aborts the run
 with the available partitions listed, rather than imaging the wrong device.
 
+### The destination
+
+When the backup disk is not mounted, its mount point is an ordinary directory of the
+filesystem beneath it, often the root filesystem of the very drive being backed up. A
+run therefore refuses a destination stored on the drive it is backing up, through LVM,
+LUKS or RAID as well, before it writes anything; a missing destination directory is
+created only after that check. To also catch an unmounted backup disk while a drive
+other than the root drive is backed up, name the mount point the destination must be on:
+
+```sh
+dest       = /mnt/backup/host
+dest_mount = /mnt/backup   # refuse the run unless /mnt/backup is mounted and holds dest
+```
+
 ### Consistency strategies
 
 Imaging a live, mounted filesystem can capture an inconsistent state, so the strategy is
@@ -143,9 +157,9 @@ Useful flags for `run` (also available where relevant):
 
 - `--config-dir <dir>` — use a profile directory other than `/etc/redo-backups`.
 - `--dry-run` — validate and print the imaging plan without touching disks.
-- Per-setting overrides: `--dest`, `--drive`, `--parts`, `--id`, `--notes`,
-  `--compressor`, `--split-size`, `--consistency`. These override the profile and are
-  re-validated. Example:
+- Per-setting overrides: `--dest`, `--dest-mount`, `--drive`, `--parts`, `--id`,
+  `--notes`, `--compressor`, `--split-size`, `--consistency`. These override the profile
+  and are re-validated. Example:
 
 ```sh
 redo-backup run nightly --dest /mnt/usb --consistency fsfreeze --dry-run

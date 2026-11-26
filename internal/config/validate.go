@@ -5,7 +5,9 @@ package config
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"regexp"
+	"strings"
 )
 
 var (
@@ -18,6 +20,8 @@ var (
 // wrapping these with %w, so callers can still match them with errors.Is.
 var (
 	errDestRequired       = errors.New("config: 'dest' is required")
+	errDestMountRelative  = errors.New("config: 'dest_mount' must be an absolute path")
+	errDestOutsideMount   = errors.New("config: 'dest' must lie under 'dest_mount'")
 	errInvalidDrive       = errors.New("config: invalid 'drive' value")
 	errInvalidPartName    = errors.New("config: invalid partition name")
 	errInvalidID          = errors.New("config: invalid 'id' value")
@@ -44,6 +48,10 @@ var validCompressor = map[Compressor]bool{
 func (c *Config) Validate() error {
 	if c.Dest == "" {
 		return errDestRequired
+	}
+
+	if err := c.validateDestMount(); err != nil {
+		return err
 	}
 
 	if err := c.validateDrive(); err != nil {
@@ -94,4 +102,36 @@ func (c *Config) validateDrive() error {
 	default:
 		return fmt.Errorf("%w %q", errInvalidDrive, c.Drive)
 	}
+}
+
+// validateDestMount checks the optional mount point the destination must be on:
+// an absolute path, with the destination written as an absolute path under it.
+// That the destination really is on the filesystem mounted there can only be
+// told at run time.
+func (c *Config) validateDestMount() error {
+	if c.DestMount == "" {
+		return nil
+	}
+
+	if !filepath.IsAbs(c.DestMount) {
+		return fmt.Errorf("%w: %q", errDestMountRelative, c.DestMount)
+	}
+
+	if !pathWithin(c.Dest, c.DestMount) {
+		return fmt.Errorf("%w: %q is not under %q", errDestOutsideMount, c.Dest, c.DestMount)
+	}
+
+	return nil
+}
+
+// pathWithin reports whether the absolute path is dir or lies under it. The
+// comparison is lexical, on the cleaned paths: symbolic links are not followed.
+func pathWithin(path, dir string) bool {
+	if !filepath.IsAbs(path) {
+		return false
+	}
+
+	rel, err := filepath.Rel(filepath.Clean(dir), filepath.Clean(path))
+
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

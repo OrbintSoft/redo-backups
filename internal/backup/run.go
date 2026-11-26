@@ -15,11 +15,6 @@ import (
 	"github.com/OrbintSoft/redo-backups/internal/snapshot"
 )
 
-// destDirPerm restricts the backup destination directory to owner and group. It
-// holds backup images that may be sensitive and is accessed only by the
-// root-run tool, so it need not be world-readable.
-const destDirPerm os.FileMode = 0o750
-
 // Backup orchestrates a full backup run. All system access goes through Runner
 // and Inspector, so the orchestration is testable with fakes.
 type Backup struct {
@@ -42,9 +37,10 @@ type Report struct {
 	Partitions     []string
 }
 
-// Run performs the backup described by cfg: it resolves the drive, gathers the
-// MBR and partition table, writes the ".redo" descriptor, and images each
-// selected partition.
+// Run performs the backup described by cfg: it resolves the drive, refuses a
+// destination that is not available (ErrDestUnavailable), gathers the MBR and
+// partition table, writes the ".redo" descriptor, and images each selected
+// partition.
 func (b *Backup) Run(ctx context.Context, cfg *config.Config) (*Report, error) {
 	strategy, err := snapshot.For(cfg, b.Runner)
 	if err != nil {
@@ -53,6 +49,12 @@ func (b *Backup) Run(ctx context.Context, cfg *config.Config) (*Report, error) {
 
 	drive, d, parts, err := b.resolveTarget(ctx, cfg)
 	if err != nil {
+		return nil, err
+	}
+
+	// Refuse an unavailable destination before writing anything, including the
+	// destination directory itself.
+	if err := b.checkDest(ctx, cfg, drive); err != nil {
 		return nil, err
 	}
 
@@ -77,11 +79,8 @@ func (b *Backup) Run(ctx context.Context, cfg *config.Config) (*Report, error) {
 
 	img := BuildImage(cfg, d, parts, id, timestamp, mbr, sfd)
 
-	if err := os.MkdirAll(cfg.Dest, destDirPerm); err != nil {
-		return nil, fmt.Errorf("backup: creating destination %s: %w", cfg.Dest, err)
-	}
 	// Write the descriptor before imaging, matching Redo Rescue's order.
-	descPath, err := WriteDescriptor(cfg.Dest, img)
+	descPath, err := writeDescriptorIn(cfg.Dest, img)
 	if err != nil {
 		return nil, err
 	}
@@ -123,9 +122,10 @@ type PlannedPartition struct {
 }
 
 // Plan computes what Run would do using only read-only inspection: it resolves
-// the drive and partitions and builds the imaging pipeline for each, without
-// reading the MBR, writing the descriptor, taking snapshots, or imaging
-// anything. It backs the CLI's --dry-run.
+// the drive and partitions, refuses an unavailable destination as Run does, and
+// builds the imaging pipeline for each partition, without reading the MBR,
+// writing the descriptor, taking snapshots, or imaging anything. It backs the
+// CLI's --dry-run.
 func (b *Backup) Plan(ctx context.Context, cfg *config.Config) (*Plan, error) {
 	// Surface an unknown/unimplemented consistency strategy without preparing it.
 	if _, err := snapshot.For(cfg, b.Runner); err != nil {
@@ -134,6 +134,10 @@ func (b *Backup) Plan(ctx context.Context, cfg *config.Config) (*Plan, error) {
 
 	drive, _, parts, err := b.resolveTarget(ctx, cfg)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := b.checkDest(ctx, cfg, drive); err != nil {
 		return nil, err
 	}
 
