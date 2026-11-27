@@ -27,6 +27,22 @@ directory:
 - `<dev>` is the **partition** device name without `/dev/` (e.g. `sda1`, `nvme0n1p2`).
 - Chunks are numbered starting at `001`, zero-padded to 3 digits.
 
+`redo-backups` also writes a completion record, `<id>.complete`, which is not part of
+the Redo Rescue format: Redo Rescue neither writes nor reads it, and restores ignore
+it. The descriptor is written before the partitions are imaged, matching Redo Rescue,
+so a run that stops half way leaves a descriptor and partial chunks behind. The record
+is written only once every partition is imaged, after the descriptor and every chunk
+have been flushed to disk, and it lists them with their sizes:
+
+```json
+{"version":1,"id":"20260105","files":[{"name":"20260105.redo","bytes":45120},{"name":"20260105_sda1_001.img","bytes":3121804}]}
+```
+
+A set without a record, or whose files no longer match it, is not known to be
+complete. A run whose id already has a set in the destination replaces it: it removes
+the record first and, before imaging each partition, that partition's earlier chunks,
+which a shorter image would otherwise leave behind for a restore to read.
+
 Example for a drive with four partitions:
 
 ```

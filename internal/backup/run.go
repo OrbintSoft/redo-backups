@@ -39,8 +39,9 @@ type Report struct {
 
 // Run performs the backup described by cfg: it resolves the drive, refuses a
 // destination that is not available (ErrDestUnavailable), gathers the MBR and
-// partition table, writes the ".redo" descriptor, and images each selected
-// partition.
+// partition table, writes the ".redo" descriptor, images each selected
+// partition, and finally writes the set's completion record ("<id>.complete").
+// A set already in the destination under the same id is replaced.
 func (b *Backup) Run(ctx context.Context, cfg *config.Config) (*Report, error) {
 	strategy, err := snapshot.For(cfg, b.Runner)
 	if err != nil {
@@ -80,25 +81,23 @@ func (b *Backup) Run(ctx context.Context, cfg *config.Config) (*Report, error) {
 	img := BuildImage(cfg, d, parts, id, timestamp, mbr, sfd)
 
 	// Write the descriptor before imaging, matching Redo Rescue's order.
-	descPath, err := writeDescriptorIn(cfg.Dest, img)
+	set, descPath, err := startSet(cfg.Dest, img)
 	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = set.Close() }()
+
+	if err := b.imageAll(ctx, strategy, cfg, set, parts, id); err != nil {
 		return nil, err
 	}
 
-	logDir, cleanup, err := b.resolveLogDir()
-	if err != nil {
+	// Only now, with every partition imaged, is the set known to be complete.
+	if _, err := writeCompletion(set, id, parts); err != nil {
 		return nil, err
 	}
-	defer cleanup()
 
 	report := &Report{Drive: drive, ID: id, DescriptorPath: descPath, Partitions: nil}
-
 	for _, part := range parts {
-		logfile := filepath.Join(logDir, part.Name+".log")
-		if err := b.imagePartition(ctx, strategy, cfg, part, logfile, id); err != nil {
-			return nil, err
-		}
-
 		report.Partitions = append(report.Partitions, part.Name)
 	}
 
@@ -172,6 +171,36 @@ func (b *Backup) Plan(ctx context.Context, cfg *config.Config) (*Plan, error) {
 	return plan, nil
 }
 
+// imageAll images each partition in turn, first removing the chunks an earlier
+// set with the same id left for it.
+func (b *Backup) imageAll(
+	ctx context.Context,
+	strategy snapshot.Strategy,
+	cfg *config.Config,
+	set *os.Root,
+	parts []disk.Partition,
+	id string,
+) error {
+	logDir, cleanup, err := b.resolveLogDir()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	for _, part := range parts {
+		if err := removeChunks(set, id, part.Name); err != nil {
+			return err
+		}
+
+		logfile := filepath.Join(logDir, part.Name+".log")
+		if err := b.imagePartition(ctx, strategy, cfg, part, logfile, id); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // imagePartition prepares the partition with the consistency strategy, runs the
 // imaging pipeline against the prepared source, and always releases the
 // preparation afterwards (even on failure).
@@ -220,23 +249,9 @@ func (b *Backup) resolveTarget(
 	ctx context.Context,
 	cfg *config.Config,
 ) (string, *disk.Drive, []disk.Partition, error) {
-	drive := cfg.Drive
-
-	switch {
-	case cfg.DriveAuto():
-		root, err := b.Inspector.RootDrive(ctx)
-		if err != nil {
-			return "", nil, nil, err
-		}
-
-		drive = root
-	case cfg.DriveIsPath():
-		name, err := b.Inspector.ResolveDrivePath(ctx, cfg.Drive)
-		if err != nil {
-			return "", nil, nil, err
-		}
-
-		drive = name
+	drive, err := b.resolveDrive(ctx, cfg)
+	if err != nil {
+		return "", nil, nil, err
 	}
 
 	d, err := b.Inspector.Drive(ctx, drive)
@@ -254,6 +269,21 @@ func (b *Backup) resolveTarget(
 	}
 
 	return drive, d, parts, nil
+}
+
+// resolveDrive returns the kernel name of the drive cfg names: the drive
+// hosting the root filesystem for "auto", the drive behind a /dev/disk/by-*/
+// link, or the name itself. Unlike resolveTarget it only runs findmnt and
+// lsblk, which need no root.
+func (b *Backup) resolveDrive(ctx context.Context, cfg *config.Config) (string, error) {
+	switch {
+	case cfg.DriveAuto():
+		return b.Inspector.RootDrive(ctx)
+	case cfg.DriveIsPath():
+		return b.Inspector.ResolveDrivePath(ctx, cfg.Drive)
+	default:
+		return cfg.Drive, nil
+	}
 }
 
 func (b *Backup) now() time.Time {

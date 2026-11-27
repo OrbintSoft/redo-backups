@@ -141,7 +141,9 @@ sudo ./redo-backup run example
 ```
 
 On success the destination directory contains `<id>.redo` and the `<id>_<dev>_NNN.img`
-chunks, restorable from the Redo Rescue live CD.
+chunks, restorable from the Redo Rescue live CD, and the completion record `<id>.complete`,
+written last: a set without it is one whose run did not finish. A run with an id that
+already has a set in the destination replaces that set.
 
 ## Commands
 
@@ -150,6 +152,7 @@ redo-backup list                       # list available profiles
 redo-backup show <profile>             # print a profile's resolved config
 redo-backup run <profile>              # run the backup
 redo-backup run <profile> --dry-run    # preview the plan, touch nothing
+redo-backup check <profile> --max-age 20d   # is the newest complete backup recent enough?
 redo-backup version | help
 ```
 
@@ -164,6 +167,33 @@ Useful flags for `run` (also available where relevant):
 ```sh
 redo-backup run nightly --dest /mnt/usb --consistency fsfreeze --dry-run
 ```
+
+### Checking that a backup is recent
+
+A tool that runs before a system update can ask whether the last backup is recent
+enough, and offer to take one when it is not, without knowing the backup format:
+
+```sh
+redo-backup check nightly --max-age 20d
+```
+
+| Exit | Meaning | Does a backup help? |
+|------|---------|---------------------|
+| 0 | the newest complete backup is younger than `--max-age` | not needed |
+| 1 | it is older, or there is none | yes |
+| 2 | the destination is not available (the backup disk is not mounted, say) | no |
+| 3 | any other error, usage errors included | no |
+
+It prints the backup it found and its age. Only sets with a valid completion record
+(`<id>.complete`, see [docs/redo-format.md](docs/redo-format.md#file-layout)) count: sets
+from runs that stopped half way, made before that record existed, or made by Redo Rescue
+are ignored. The age comes from the descriptor's `timestamp`, not from the files'
+modification time, which a copy changes. `--max-age` takes whole numbers with the units
+`w`, `d`, `h` and `m` (minutes, not months), largest first: `20d`, `2w`, `1d12h`.
+
+`check` only reads, and it decides that the destination is not available the same
+way `run` does. It needs to read the descriptors and records, which `run` makes
+readable by root only, so run it as root.
 
 ## Requirements
 
